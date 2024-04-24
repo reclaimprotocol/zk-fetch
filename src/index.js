@@ -1,0 +1,1 @@
+module.exports.zkFetch = require('./zkFetch').zkFetch;
