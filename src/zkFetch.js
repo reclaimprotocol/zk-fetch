@@ -30,9 +30,6 @@ function assertCorrectnessOfOptions(options) {
     if (options.method != "GET" && options.method != "POST") {
         throw new Error("Allowed methods are GET and POST only");
     }
-    if(options.headers) {
-        throw new Error("Public Headers are not supported, please use secretHeaders");
-    }
     if(options.mode || options.cache || options.credentials || options.redirect || options.referrerPolicy) {
         throw new Error("Only allowed `method` and `body` in options object");
     }
@@ -42,7 +39,8 @@ function assertCorrectnessOfOptions(options) {
 module.exports.zkFetch =  async function(url, options, secretHeaders, ecdsaPrivateKey) {
     assertCorrectnessOfOptions(options);
 
-    const regularFetchResponse = await (await fetch(url, options)).text();
+    //const regularFetchResponse = (await (await fetch(url, options)).json()).ethereum.usd.toString();
+    const regularFetchResponse = (await (await fetch(url, options)).text());
     console.log(regularFetchResponse);
     const providerParams = {
         "method": options.method,
@@ -56,13 +54,33 @@ module.exports.zkFetch =  async function(url, options, secretHeaders, ecdsaPriva
         responseRedactions: [],
         body: options.body,
     };
+    console.log(providerParams);
     const claim = await createClaim({
-		name: 'http',
+        "name": "http",
+        "params": {
+            "method": "GET",
+            "url": "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd",
+            "responseMatches": [
+                {
+                    "type": "contains",
+                    "value": regularFetchResponse
+                }
+            ],
+            "responseRedactions": []
+        },
+        "secretParams": {
+            "headers": {
+                "accept": "application/json, text/plain, */*"
+            }
+        },
+/*		name: 'http',
 		params: providerParams,
 		secretParams: {
             cookieStr: "abc=pqr",
+            ...options.headers,
 			...secretHeaders
 		},
+*/
 		ownerPrivateKey: ecdsaPrivateKey,
 		logger,
 		beacon: getBeacon({

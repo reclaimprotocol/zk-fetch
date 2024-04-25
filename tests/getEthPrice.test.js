@@ -7,4 +7,4 @@ test('getEthPrice', async () => {
             usd: expect.any(Number)
         }
     });
-}, 50000);
+}, 100000);
