@@ -1,10 +1,12 @@
 const { zkFetch } = require("../src");
+const keys = require("./.keys.json");
 module.exports.getEthPrice = async () => {
-    const url = "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd";
+    const url = "https://pro-api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd";
     const options = {
         method: "GET",
         headers: {
-            "accept": "application/json, text/plain, */*"
+            "accept": "application/json, text/plain, */*",
+	          "x-cg-pro-api-key": keys.COINGECKO_API_KEY
         }
     };
     return await zkFetch(url, options, {}, "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef");

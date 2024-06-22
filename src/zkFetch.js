@@ -35,9 +35,7 @@ function assertCorrectnessOfOptions(options) {
 module.exports.zkFetch =  async function(url, options, secretHeaders, ecdsaPrivateKey) {
     assertCorrectnessOfOptions(options);
 
-    //const regularFetchResponse = (await (await fetch(url, options)).json()).ethereum.usd.toString();
-    const regularFetchResponse = (await (await fetch(url, options)).text());
-    console.log(regularFetchResponse);
+    const regularFetchResponse = (await (await fetch(url, options)).json()).ethereum.usd.toString();
     const providerParams = {
         "method": options.method,
         "url": url,
@@ -61,5 +59,17 @@ module.exports.zkFetch =  async function(url, options, secretHeaders, ecdsaPriva
 		ownerPrivateKey: ecdsaPrivateKey,
 		logger,
 	});
-    console.log(claim);
+    return claim;
+}
+
+module.exports.zkFetchWithRetries =  async function(url, options, secretHeaders, ecdsaPrivateKey, retries = 1, retryInterval = 1000) {
+    for(let i = 0; i < retries; i++) {
+        try {
+            return await module.exports.zkFetch(url, options, secretHeaders, ecdsaPrivateKey);
+        } catch(e) {
+            console.warn("Try ", i+1, e);
+            await new Promise(resolve => setTimeout(resolve, retryInterval));
+        }
+    }
+    throw new Error("Failed to fetch data after retries");
 }
