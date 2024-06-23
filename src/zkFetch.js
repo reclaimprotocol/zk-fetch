@@ -29,13 +29,26 @@ function assertCorrectnessOfOptions(options) {
     if(options.mode || options.cache || options.credentials || options.redirect || options.referrerPolicy) {
         throw new Error("Only allowed `method` and `body` in options object");
     }
-
 }
 
-module.exports.zkFetch =  async function(url, options, secretHeaders, ecdsaPrivateKey) {
-    assertCorrectnessOfOptions(options);
+function assertCorrectnessOfSecretOptions(secretOptions) {
+    if (secretOptions.body) {
+        throw new Error("Bodyis not yet supported in secret options");
+    }
+}
 
-    const regularFetchResponse = (await (await fetch(url, options)).json()).ethereum.usd.toString();
+module.exports.zkFetch =  async function(url, options, secretOptions={}, ecdsaPrivateKey='0x0') {
+    assertCorrectnessOfOptions(options);
+    assertCorrectnessOfSecretOptions(secretOptions);
+
+    const fetchHeaders = { ...options.headers, ...secretOptions.headers };
+    const fetchOptions = {
+        method: options.method,
+        body: options.body,
+        headers: fetchHeaders,
+    };
+    //const regularFetchResponse = (await (await fetch(url, options)).json()).ethereum.usd.toString();
+    const regularFetchResponse = await (await fetch(url, fetchOptions)).text();
     const providerParams = {
         "method": options.method,
         "url": url,
@@ -49,20 +62,22 @@ module.exports.zkFetch =  async function(url, options, secretHeaders, ecdsaPriva
         responseRedactions: [],
         body: options.body,
     };
-    const claim = await createClaim({
+    const claimParams = {
 		name: 'http',
 		params: providerParams,
 		secretParams: {
             cookieStr: "abc=pqr",
-			...secretHeaders
+			...secretOptions
 		},
 		ownerPrivateKey: ecdsaPrivateKey,
 		logger,
-	});
+	};
+    console.log(claimParams)
+    const claim = await createClaim(claimParams);
     return claim;
 }
 
-module.exports.zkFetchWithRetries =  async function(url, options, secretHeaders, ecdsaPrivateKey, retries = 1, retryInterval = 1000) {
+module.exports.zkFetchWithRetries =  async function(url, options, secretHeaders, ecdsaPrivateKey='0x0', retries = 1, retryInterval = 1000) {
     for(let i = 0; i < retries; i++) {
         try {
             return await module.exports.zkFetch(url, options, secretHeaders, ecdsaPrivateKey);
