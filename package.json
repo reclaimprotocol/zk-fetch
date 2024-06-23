@@ -1,18 +1,30 @@
 {
-  "name": "zk-fetch",
-  "version": "1.0.0",
+  "name": "@reclaimprotocol/zk-fetch",
+  "version": "0.0.1",
   "description": "HTTPS Fetch with a zkproof of correctness of fetch",
   "main": "index.js",
   "scripts": {
     "test": "jest"
   },
-  "author": "",
-  "license": "ISC",
+  "author": "madhavanmalolan",
+  "license": "SEE LICENSE IN https://gitlab.reclaimprotocol.org/integrations/offchain/zk-fetch/-/blob/master/LICENSE.md",
   "dependencies": {
     "@reclaimprotocol/witness-sdk": "^0.0.3",
     "pino": "^8.20.0"
   },
   "devDependencies": {
     "jest": "^29.7.0"
-  }
+  },
+  "directories": {
+    "test": "tests"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://gitlab.reclaimprotocol.org/integrations/offchain/zk-fetch"
+  },
+  "keywords": [
+    "zk",
+    "fetch",
+    "reclaimprotocol"
+  ]
 }

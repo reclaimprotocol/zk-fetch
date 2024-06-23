@@ -10,9 +10,14 @@ zkFetch is based on [Reclaim Protocol](https://reclaimprotocol.org)
 **Note : We recommend using zkproof only for data that is unlikely to change within 5s, i.e. during the process of proof generation**
 
 ## Usage
-### Install zkfetch
+
 ```
-$ npm install @reclaimprotocol/zkfetch
+$ npm install @reclaimprotocol/zk-fetch
+```
+
+Import 
+```
+  const { zkFetch, zkFetchWithRetries } = require("@reclaimprotocol/zk-fetch");
 ```
 
 ### For public endpoints
@@ -134,6 +139,9 @@ To use the response,
 You must send the proofObject and not the verifiedResponse to the verifier for them to be able to verify.
 
 The verifier can then verify the proof as mentioned on the [docs here](https://docs.reclaimprotocol.org/js/callback#verify-the-proofs)
+
+## More examples
+You can see an example of how to use
 
 ## License 
 This library is governed by an [AGPL](./LICENSE.md) license.
