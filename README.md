@@ -100,3 +100,9 @@ This is used when the proof needs guarantees on who generated it. This is partic
     address,
   )
 ```
+
+## License 
+This library is governed by an [AGPL](./LICENSE.md) license.
+That means, you can fork, modify and use for commercial use as long as the entire project is fully open sourced under an AGPL License.
+
+If you wish to use commercially use this library in a closed source product, [you must take permission](https://t.me/protocolreclaim/1452).
