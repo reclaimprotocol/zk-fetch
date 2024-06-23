@@ -25,7 +25,7 @@ This is useful when
 
 ```
   const publicOptions = {
-    method: 'GET',
+    method: 'GET', // or POST
     headers : {
         accept: 'application/json, text/plain, */*' 
     }
@@ -47,7 +47,7 @@ This is useful when
 
 ```
   const publicOptions = {
-    method: 'GET',
+    method: 'GET', // or POST
     headers : {
       accept: 'application/json, text/plain, */*' 
     }
@@ -78,7 +78,7 @@ This is used when the proof needs guarantees on who generated it. This is partic
   //beta
 
   const publicOptions = {
-    method: 'GET',
+    method: 'GET', // or POST
     headers : {
       accept: 'application/json, text/plain, */*' 
     }
@@ -100,6 +100,40 @@ This is used when the proof needs guarantees on who generated it. This is partic
     address,
   )
 ```
+## Using the response
+The response looks like the follows
+```
+    {
+      identifier: '0xd4f0afed947068fd67f08ffdd8c8be48228e3cb9c358c54c008d7586769c9ddc',
+      claimData: {
+        provider: 'http',
+        parameters: '{"headers":{"accept":"application/json, text/plain, */*"},"method":"GET","responseMatches":[{"type":"contains","value":"<HTTP RESPONSE TEXT>"}],"responseRedactions":[],"url":"https://sampleurl.com"}',
+        owner: '0x1be31a94361a391bbafb2a4ccd704f57dc04d4bb',
+        timestampS: 1719150088,
+        context: '{"providerHash":"0xe3e98ad8309b5489e61bd47c5eef8d75da819a1c7fe73b0972bccbed5bc13cda"}',
+        identifier: '0xd4f0afed947068fd67f08ffdd8c8be48228e3cb9c358c54c008d7586769c9ddc',
+        epoch: 1
+      },
+      signatures: [
+        '0xbfc64752eab0713ef715df45f04219e201b669ac58c84a6dff3bfc01b4f8a50c2dda58c18f154f5ab5c17b84179bc41cb9a47e762b792f8dadb1c1f5f5b4f9e91b'
+      ],
+      witnesses: [
+        {
+          id: '0x244897572368eadf65bfbc5aec98d8e5443a9072',
+          url: 'https://reclaim-node.questbook.app'
+        }
+      ]
+    }
+```
+
+To use the response, 
+```
+  const verifiedResponse = JSON.parse(ethPriceProof.claimData.parameters).responseMatches[0].value;
+```
+
+You must send the proofObject and not the verifiedResponse to the verifier for them to be able to verify.
+
+The verifier can then verify the proof as mentioned on the [docs here](https://docs.reclaimprotocol.org/js/callback#verify-the-proofs)
 
 ## License 
 This library is governed by an [AGPL](./LICENSE.md) license.
