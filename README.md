@@ -17,7 +17,7 @@ $ npm install @reclaimprotocol/zk-fetch
 
 Import 
 ```
-  const { zkFetch, zkFetchWithRetries } = require("@reclaimprotocol/zk-fetch");
+  const { zkFetch } = require("@reclaimprotocol/zk-fetch");
 ```
 
 ### For public endpoints
@@ -141,7 +141,7 @@ You must send the proofObject and not the verifiedResponse to the verifier for t
 The verifier can then verify the proof as mentioned on the [docs here](https://docs.reclaimprotocol.org/js/callback#verify-the-proofs)
 
 ## More examples
-You can see an example of how to use
+You can see an example of how to use zkFetch [here](https://gitlab.reclaimprotocol.org/integrations/offchain/zk-fetch/-/tree/master/tests?ref_type=heads).
 
 ## License 
 This library is governed by an [AGPL](./LICENSE.md) license.

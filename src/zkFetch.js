@@ -37,54 +37,50 @@ function assertCorrectnessOfSecretOptions(secretOptions) {
     }
 }
 
-module.exports.zkFetch =  async function(url, options, secretOptions={}, ecdsaPrivateKey='0x0') {
+module.exports.zkFetch =  async function(url, options, secretOptions={}, ecdsaPrivateKey='0x0', retries = 1, retryInterval = 1000) {
     assertCorrectnessOfOptions(options);
     assertCorrectnessOfSecretOptions(secretOptions);
-
-    const fetchHeaders = { ...options.headers, ...secretOptions.headers };
-    const fetchOptions = {
-        method: options.method,
-        body: options.body,
-        headers: fetchHeaders,
-    };
-    //const regularFetchResponse = (await (await fetch(url, options)).json()).ethereum.usd.toString();
-    const regularFetchResponse = await (await fetch(url, fetchOptions)).text();
-    const providerParams = {
-        "method": options.method,
-        "url": url,
-        "responseMatches": [
-            {
-                "type": "contains",
-                "value": regularFetchResponse
-            }
-        ],
-        headers: options.headers,
-        responseRedactions: [],
-        body: options.body,
-    };
-    const claimParams = {
-		name: 'http',
-		params: providerParams,
-		secretParams: {
-            cookieStr: "abc=pqr",
-			...secretOptions
-		},
-		ownerPrivateKey: ecdsaPrivateKey,
-		logger,
-	};
-    console.log(claimParams)
-    const claim = await createClaim(claimParams);
-    return claim;
-}
-
-module.exports.zkFetchWithRetries =  async function(url, options, secretHeaders, ecdsaPrivateKey='0x0', retries = 1, retryInterval = 1000) {
     for(let i = 0; i < retries; i++) {
         try {
-            return await module.exports.zkFetch(url, options, secretHeaders, ecdsaPrivateKey);
+
+            const fetchHeaders = { ...options.headers, ...secretOptions.headers };
+            const fetchOptions = {
+                method: options.method,
+                body: options.body,
+                headers: fetchHeaders,
+            };
+            //const regularFetchResponse = (await (await fetch(url, options)).json()).ethereum.usd.toString();
+            const regularFetchResponse = await (await fetch(url, fetchOptions)).text();
+            const providerParams = {
+                "method": options.method,
+                "url": url,
+                "responseMatches": [
+                    {
+                        "type": "contains",
+                        "value": regularFetchResponse
+                    }
+                ],
+                headers: options.headers,
+                responseRedactions: [],
+                body: options.body,
+            };
+            const claimParams = {
+                name: 'http',
+                params: providerParams,
+                secretParams: {
+                    cookieStr: "abc=pqr",
+                    ...secretOptions
+                },
+                ownerPrivateKey: ecdsaPrivateKey,
+                logger,
+            };
+            console.log(claimParams)
+            const claim = await createClaim(claimParams);
+            return claim;
         } catch(e) {
-            console.warn("Try ", i+1, e);
             await new Promise(resolve => setTimeout(resolve, retryInterval));
         }
     }
     throw new Error("Failed to fetch data after retries");
 }
+
