@@ -34,13 +34,6 @@ export class NetworkError extends Error {
     }
 }
 
-export class ProofNotVerifiedError extends Error {
-    constructor(message?: string) {
-        super(message)
-        this.name = 'ProofNotVerifiedError'
-    }
-}
-
 export class ApplicationError extends Error {
     constructor(message?: string) {
         super(message)

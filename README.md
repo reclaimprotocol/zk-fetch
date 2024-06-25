@@ -147,14 +147,6 @@ To use the response,
   const verifiedResponse = JSON.parse(ethPriceProof.claimData.parameters).responseMatches[0].value;
 ```
 
-### Verifying the proof
-
-Verifies the authenticity and completeness of a given proof. It checks if the proof contains signatures, recalculates the proof identifier, and verifies it against the provided signatures. If the verification fails, it will log the error and return false
-
-```javascript
-const isVerified = await client.verifyProof(proof);
-```
-
 You must send the proofObject and not the verifiedResponse to the verifier for them to be able to verify.
 
 The verifier can then verify the proof as mentioned on the [docs here](https://docs.reclaimprotocol.org/js/callback#verify-the-proofs)

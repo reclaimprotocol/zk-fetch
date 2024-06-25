@@ -1,11 +1,10 @@
-import { ApplicationError, DisallowedOptionError, InvalidMethodError, InvalidParamError, NetworkError, ProofNotVerifiedError } from './errors';
-import { ApplicationId, ApplicationSecret, DisallowedOption, HttpMethod, SignedClaim } from './types'
-import { Options, secretOptions, SendLogsParams, WitnessData } from './interfaces';
-import { makeBeacon } from './smart-contract';
-import { fetchWitnessListForClaim, logger } from '@reclaimprotocol/witness-sdk';
-import { createSignDataForClaim } from './witness';
+import { ApplicationError, DisallowedOptionError, InvalidMethodError, InvalidParamError, NetworkError } from './errors';
+import { ApplicationId, ApplicationSecret, DisallowedOption, HttpMethod } from './types'
+import { Options, secretOptions, SendLogsParams } from './interfaces';
 import { ethers } from 'ethers';
 import { APP_BACKEND_URL, LOGS_BACKEND_URL } from './constants';
+import P from "pino";
+const logger = P();
 
 /*
   Options validations utils
@@ -82,67 +81,6 @@ export function validateURL(url: string, functionName: string): void {
   }
    
 
-
-  export async function getWitnessesForClaim(
-    epoch: number,
-    identifier: string,
-    timestampS: number
-  ) {
-    const beacon = makeBeacon()
-    if (!beacon) throw new Error('No beacon')
-    const state = await beacon.getState(epoch)
-    const witnessList = fetchWitnessListForClaim(state, identifier, timestampS)
-    return witnessList.map((w: WitnessData) => w.id.toLowerCase())
-  }
-  
-  
-  /** recovers the addresses of those that signed the claim */
-export function recoverSignersOfSignedClaim({
-  claim,
-  signatures
-}: SignedClaim) {
-  const dataStr = createSignDataForClaim({ ...claim })
-  return signatures.map(signature =>
-    ethers.verifyMessage(dataStr, ethers.hexlify(signature)).toLowerCase()
-  )
-}
-
-
-
-/**
- * Asserts that the claim is signed by the expected witnesses
- * @param claim
- * @param expectedWitnessAddresses
- */
-export function assertValidSignedClaim(
-  claim: SignedClaim,
-  expectedWitnessAddresses: string[]
-) {
-  const witnessAddresses = recoverSignersOfSignedClaim(claim)
-  // set of witnesses whose signatures we've not seen
-  const witnessesNotSeen = new Set(expectedWitnessAddresses)
-  for (const witness of witnessAddresses) {
-    if (witnessesNotSeen.has(witness)) {
-      witnessesNotSeen.delete(witness)
-    }
-  }
-
-  // check if all witnesses have signed
-  if (witnessesNotSeen.size > 0) {
-    throw new ProofNotVerifiedError(
-      `Missing signatures from ${expectedWitnessAddresses.join(', ')}`
-    )
-  }
-}
-
-
-export function escapeRegExp(string: string) {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
-}
-
-export function replaceAll(str: string, find: string, replace: string) {
-  return str.replace(new RegExp(escapeRegExp(find), 'g'), replace);
-}
 // cache for app name to avoid multiple fetches 
 const appNameCache: { [key: string]: string } = {};
 export async function fetchAppById(appId: string): Promise<string> {
@@ -166,9 +104,6 @@ export async function fetchAppById(appId: string): Promise<string> {
     throw new ApplicationError('Application not found');
   }
 }
-
-
-
 
 /* 
  sendLogs utils

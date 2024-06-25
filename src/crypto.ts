@@ -1,19 +1,5 @@
 
-import { ethers, Wallet } from 'ethers'
-import { randomBytes } from 'crypto'
-
-
-export const generateWallet = async () => {
-  const bytes = randomBytes(32).toString('hex')
-  const wallet = new Wallet(bytes)
-  const address = wallet.address
-
-  return {
-    privateKey: wallet.privateKey,
-    address,
-  }
-}
-
+import { ethers } from 'ethers'
 
 export const getWalletFromPrivateKey = (privateKey: string) => {
   if(!privateKey) {

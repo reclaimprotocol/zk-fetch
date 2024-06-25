@@ -1,1 +1,0 @@
-export { Reclaim__factory } from "./factory";

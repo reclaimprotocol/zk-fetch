@@ -1,12 +1,8 @@
 import { createClaim } from "@reclaimprotocol/witness-sdk";
-import { HttpMethod, LogType, SignedClaim } from "./types";
-import { Options, Proof, secretOptions } from "./interfaces";
-import { getWalletFromPrivateKey } from "./crypto";
+import { HttpMethod, LogType } from "./types";
+import { Options, secretOptions } from "./interfaces";
 import {
   assertCorrectnessOfOptions,
-  assertValidSignedClaim,
-  getWitnessesForClaim,
-  replaceAll,
   validateURL,
   sendLogs,
   validateApplicationIdAndSecret,
@@ -14,10 +10,7 @@ import {
 } from "./utils";
 import { v4 } from "uuid";
 import P from "pino";
-import { FetchError, ProofNotVerifiedError } from "./errors";
-import { getIdentifierFromClaimInfo } from "./witness";
-import canonicalize from "canonicalize";
-import { ethers } from "ethers";
+import { FetchError } from "./errors";
 const logger = P();
 
 export class ReclaimClient {
@@ -45,7 +38,6 @@ export class ReclaimClient {
     url: string,
     options?: Options,
     secretOptions?: secretOptions,
-    ecdsaPrivateKey?: string,
     retries = 1,
     retryInterval = 1000
   ) {
@@ -61,10 +53,6 @@ export class ReclaimClient {
                 body: options?.body,
                 headers: { ...options?.headers, ...secretOptions?.headers },
     };
-    if (!ecdsaPrivateKey) {
-      const wallet = await getWalletFromPrivateKey(this.applicationSecret);
-      ecdsaPrivateKey = wallet.privateKey;
-    }
     await sendLogs({
       sessionId: this.sessionId,
       logType: LogType.VERIFICATION_STARTED,
@@ -100,7 +88,7 @@ export class ReclaimClient {
             cookieStr: "abc=pqr",
             ...secretOptions,
           },
-          ownerPrivateKey: ecdsaPrivateKey,
+          ownerPrivateKey: this.applicationSecret,
           logger: logger,
         });
 
@@ -127,46 +115,4 @@ export class ReclaimClient {
     }
   }
 
-  async verifyProof(proof: Proof) {
-    if (!proof.signatures.length) {
-      throw new Error("No signatures");
-    }
-    const witnesses = await getWitnessesForClaim(
-      proof.claimData.epoch,
-      proof.identifier,
-      proof.claimData.timestampS
-    );
-
-    try {
-      // then hash the claim info with the encoded ctx to get the identifier
-      const calculatedIdentifier = getIdentifierFromClaimInfo({
-        parameters: JSON.parse(
-          canonicalize(proof.claimData.parameters) as string
-        ),
-        provider: proof.claimData.provider,
-        context: proof.claimData.context,
-      });
-      proof.identifier = replaceAll(proof.identifier, '"', "");
-      // check if the identifier matches the one in the proof
-      if (calculatedIdentifier !== proof.identifier) {
-        throw new ProofNotVerifiedError("Identifier Mismatch");
-      }
-
-      const signedClaim: SignedClaim = {
-        claim: {
-          ...proof.claimData,
-        },
-        signatures: proof.signatures.map((signature) => {
-          return ethers.getBytes(signature);
-        }),
-      };
-
-      // verify the witness signature
-      assertValidSignedClaim(signedClaim, witnesses);
-    } catch (e: Error | unknown) {
-      logger.error(e);
-      return false;
-    }
-    return true;
-  }
 }
