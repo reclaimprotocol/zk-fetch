@@ -9,6 +9,10 @@ zkFetch is based on [Reclaim Protocol](https://reclaimprotocol.org)
 
 **Note : We recommend using zkproof only for data that is unlikely to change within 5s, i.e. during the process of proof generation**
 
+## Pre-requisites
+
+An application ID and secret from Reclaim Protocol. You can get one from the  [Reclaim Developer Protocol](https://dev.reclaimprotocol.org/)
+
 ## Usage
 
 ```
@@ -17,7 +21,13 @@ $ npm install @reclaimprotocol/zk-fetch
 
 Import 
 ```
-  const { zkFetch } = require("@reclaimprotocol/zk-fetch");
+  const { ReclaimClient } = require("@reclaimprotocol/zk-fetch");
+```
+
+### Initialize Reclaim Client
+
+```javascript
+const client = new Reclaim('APPLICATION_ID', 'APPLICATION_SECRET');
 ```
 
 ### For public endpoints
@@ -35,7 +45,7 @@ This is useful when
         accept: 'application/json, text/plain, */*' 
     }
   }
-  const proof = await zkfetch(
+  const proof = await client.zkFetch(
     'https://your.url.org',
     publicOptions
   )
@@ -65,7 +75,7 @@ This is useful when
     }
   }
 
-  const proof = await zkfetch(
+  const proof = await client.zkFetch(
     'https://your.url.org',
     publicOptions,
     privateOptions
@@ -98,13 +108,14 @@ This is used when the proof needs guarantees on who generated it. This is partic
 
   const address = '0x123...789';
 
-  const proof = await zkfetch(
+  const proof = await client.zkFetch(
     'https://your.url.org',
     publicOptions,
     privateOptions,
     address,
   )
 ```
+
 ## Using the response
 The response looks like the follows
 ```
@@ -136,9 +147,60 @@ To use the response,
   const verifiedResponse = JSON.parse(ethPriceProof.claimData.parameters).responseMatches[0].value;
 ```
 
+### Verify the proofs
+
+Install @reclaimprotocol/js-sdk
+
+```bash 
+$ npm install @reclaimprotocol/js-sdk
+```
+
+Import the Reclaim class from the js-sdk
+
+```javascript
+const { Reclaim } = require('@reclaimprotocol/js-sdk');
+```
+
+Use Reclaim.verifySignedProof(proof)
+
 You must send the proofObject and not the verifiedResponse to the verifier for them to be able to verify.
 
-The verifier can then verify the proof as mentioned on the [docs here](https://docs.reclaimprotocol.org/js/callback#verify-the-proofs)
+```javascript
+const isProofVerified = await Reclaim.verifySignedProof(proof);
+```
+
+it verifies the authenticity and completeness of a given proof. It checks if the proof contains signatures, recalculates the proof identifier, and verifies it against the provided signatures. If the verification fails, it will log the error and return false.
+
+More information about the verifySignedProof method can be found [here](https://docs.reclaimprotocol.org/sdk-methods#verifysignedproofproof--promiseboolean)
+
+### Add Retries and Retry Interval
+
+You can add retries and timeout to the fetch request. The default value for retries is 3 and timeout is 5000ms.
+
+```
+  const publicOptions = {
+    method: 'GET', // or POST
+    headers : {
+      accept: 'application/json, text/plain, */*' 
+    }
+  }
+
+  const privateOptions = {
+    headers {
+        apiKey: "123...456",
+        someOtherHeader: "someOtherValue",
+    }
+  }
+
+  const proof = await client.zkFetch(
+    'https://your.url.org',
+    publicOptions,
+    privateOptions,
+    address,
+    5, // retries
+    10000 // retryInterval
+  )
+```
 
 ## More examples
 You can see an example of how to use zkFetch [here](https://gitlab.reclaimprotocol.org/integrations/offchain/zk-fetch/-/tree/master/tests?ref_type=heads).
