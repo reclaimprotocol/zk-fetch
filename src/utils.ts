@@ -16,7 +16,7 @@ export function assertCorrectnessOfOptions(options: Options): void {
   if (options.method !== HttpMethod.GET && options.method !== HttpMethod.POST) {
      throw new InvalidMethodError(`Method ${options.method} is not allowed`);
   }
-  const disallowedOptions: DisallowedOption[] = ["mode", "cache", "credentials", "redirect", "referrerPolicy"];
+  const disallowedOptions: DisallowedOption[] = ["mode", "credentials", "redirect", "referrerPolicy"];
   for (const option of disallowedOptions) {
     if (options[option as keyof Options]) {
       throw new DisallowedOptionError(`Option: ${option} is not allowed`);

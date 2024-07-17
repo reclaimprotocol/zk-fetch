@@ -1,4 +1,4 @@
-import { createClaim } from "@reclaimprotocol/witness-sdk";
+import { createClaimOnWitness } from "@reclaimprotocol/witness-sdk";
 import { HttpMethod, LogType } from "./types";
 import { Options, secretOptions } from "./interfaces";
 import {
@@ -69,8 +69,8 @@ export class ReclaimClient {
           );
         }
         const fetchResponse = await response.text();
-        const claim = await createClaim({
-          name: "http",
+        const claim = await createClaimOnWitness({
+          name: 'http',
           params: {
             method: fetchOptions.method as HttpMethod,
             url: url,
@@ -90,6 +90,9 @@ export class ReclaimClient {
           },
           ownerPrivateKey: this.applicationSecret,
           logger: logger,
+          client: {
+            url: "wss://witness.reclaimprotocol.org/ws"
+          }
         });
 
         await sendLogs({
