@@ -106,13 +106,10 @@ This is used when the proof needs guarantees on who generated it. This is partic
     }
   }
 
-  const address = '0x123...789';
-
   const proof = await client.zkFetch(
     'https://your.url.org',
     publicOptions,
     privateOptions,
-    address,
   )
 ```
 
@@ -120,26 +117,47 @@ This is used when the proof needs guarantees on who generated it. This is partic
 The response looks like the follows
 ```
     {
-      identifier: '0xd4f0afed947068fd67f08ffdd8c8be48228e3cb9c358c54c008d7586769c9ddc',
-      claimData: {
-        provider: 'http',
-        parameters: '{"headers":{"accept":"application/json, text/plain, */*"},"method":"GET","responseMatches":[{"type":"contains","value":"<HTTP RESPONSE TEXT>"}],"responseRedactions":[],"url":"https://sampleurl.com"}',
-        owner: '0x1be31a94361a391bbafb2a4ccd704f57dc04d4bb',
-        timestampS: 1719150088,
-        context: '{"providerHash":"0xe3e98ad8309b5489e61bd47c5eef8d75da819a1c7fe73b0972bccbed5bc13cda"}',
-        identifier: '0xd4f0afed947068fd67f08ffdd8c8be48228e3cb9c358c54c008d7586769c9ddc',
-        epoch: 1
-      },
-      signatures: [
-        '0xbfc64752eab0713ef715df45f04219e201b669ac58c84a6dff3bfc01b4f8a50c2dda58c18f154f5ab5c17b84179bc41cb9a47e762b792f8dadb1c1f5f5b4f9e91b'
-      ],
-      witnesses: [
-        {
-          id: '0x244897572368eadf65bfbc5aec98d8e5443a9072',
-          url: 'https://reclaim-node.questbook.app'
-        }
-      ]
-    }
+  request: {
+    request: {
+      id: 1820248759,
+      host: 'api.coingecko.com',
+      port: 443,
+      geoLocation: ''
+    },
+    data: {
+      provider: 'http',
+      parameters: '{"method":"GET","responseMatches":[{"type":"contains","value":"{\\"ethereum\\":{\\"usd\\":3436.38}}"}],"responseRedactions":[],"url":"https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd"}',
+      owner: '0xf218b59d7794e32693f5d3236e011c233e249105',
+      timestampS: 1721298792,
+      context: ''
+    },
+    transcript: [
+      [{
+    sender: 1,
+    message: <Buffer 16 03 03 01 93 01a 4b 06 19 20 6c 69 b8 b0 54 7e ... 358 more bytes>,
+  },...],
+    ],
+    signatures: {
+      requestSignature: <Buffer 36 8b 35 d0 82 66 43 d6 18 04 97 25 7e 17 70 bc d3 fc ad 27 aa e9 b1 c9 39 ... 15 more bytes>
+    },
+    zkEngine: 0
+  },
+  claim: {
+    provider: 'http',
+    parameters: '{"method":"GET","responseMatches":[{"type":"contains","value":"{\\"ethereum\\":{\\"usd\\":3436.38}}"}],"responseRedactions":[],"url":"https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd"}',
+    owner: '0xf218b59d7794e32693f5d3236e011c233e249105',
+    timestampS: 1721298792,
+    context: '',
+    identifier: '0xc0bae7878d46ca70d86dcb37782385ba78162625cc2a2f3dc5cf05ba76cc3b58',
+    epoch: 1
+  },
+  error: undefined,
+  signatures: {
+    witnessAddress: '0x244897572368eadf65bfbc5aec98d8e5443a9072',
+    claimSignature: <Buffer c2 ba bd cf 7a  8d bf 49 e7 73 86 df ee 8d c4 15 e6 12 5c d5 da aa 61 b6 2a 96 d6 ... 15 more bytes>,
+    resultSignature: <Buffer 19 b7 71 36 5e de 68 72 3f 8c 59 40 95 bf ad 24 f1 24 bc b8 d6 bd ... 15 more bytes>
+  }
+}
 ```
 
 To use the response, 
@@ -175,7 +193,7 @@ More information about the verifySignedProof method can be found [here](https://
 
 ### Add Retries and Retry Interval
 
-You can add retries and timeout to the fetch request. The default value for retries is 3 and timeout is 5000ms.
+You can add retries and timeout to the fetch request. The default value for retries is 1 and timeout is 1000ms.
 
 ```
   const publicOptions = {
@@ -202,8 +220,29 @@ You can add retries and timeout to the fetch request. The default value for retr
   )
 ```
 
+### Add GeoLocation
+
+You can add geolocation to the fetch request. The default value for geoLocation is null.
+
+```
+  const publicOptions = {
+    method: 'GET', // or POST
+    headers : {
+      accept: 'application/json, text/plain, */*' 
+    }
+    geoLocation: 'US'
+  }
+
+
+  const proof = await client.zkFetch(
+    'https://your.url.org',
+    publicOptions,
+  )
+
+```
+
 ## More examples
-You can see an example of how to use zkFetch [here](https://gitlab.reclaimprotocol.org/integrations/offchain/zk-fetch/-/tree/master/tests?ref_type=heads).
+You can see an example of how to use zkFetch [here](https://gitlab.reclaimprotocol.org/starterpacks/reclaim-zkfetch-client).
 
 ## License 
 This library is governed by an [AGPL](./LICENSE.md) license.
