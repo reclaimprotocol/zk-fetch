@@ -162,7 +162,7 @@ The response looks like the follows
 
 To use the response, 
 ```
-  const verifiedResponse = JSON.parse(ethPriceProof.claimData.parameters).responseMatches[0].value;
+  const verifiedResponse = JSON.parse(proof?.claim?.context)?.responseMatches[0]?.value
 ```
 
 ### Verify the proofs
@@ -214,7 +214,6 @@ You can add retries and timeout to the fetch request. The default value for retr
     'https://your.url.org',
     publicOptions,
     privateOptions,
-    address,
     5, // retries
     10000 // retryInterval
   )
