@@ -81,6 +81,7 @@ export class ReclaimClient {
               },
             ],
             headers: options?.headers,
+            geoLocation: options?.geoLocation,
             responseRedactions: [],
             body: fetchOptions.body,
           },
@@ -89,7 +90,7 @@ export class ReclaimClient {
             ...secretOptions,
           },
           ownerPrivateKey: this.applicationSecret,
-          logger: logger,
+          logger: logger,       
           client: {
             url: "wss://witness.reclaimprotocol.org/ws"
           }
@@ -100,7 +101,6 @@ export class ReclaimClient {
           logType: LogType.PROOF_GENERATED,
           applicationId: this.applicationId,
         });
-
         return claim;
       } catch (error: any) {
         attempt++;

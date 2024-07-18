@@ -1,6 +1,8 @@
 import { getEthPrice } from './getEthPrice';
+import { expect, test } from 'vitest'
 
 test('getEthPrice', async () => {
     const ethPriceProof = await getEthPrice();
-    expect(ethPriceProof).not.toBe(null)
+    expect(ethPriceProof?.claim?.context).toBeDefined()
+
 }, 100000);
