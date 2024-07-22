@@ -1,9 +1,10 @@
 import { ReclaimClient } from '../src'
-
+import { config } from 'dotenv'
+config()
 
 export const getEthPrice = async () => {
-    // note this is test applicationId and applicationSecret and should be replaced with your own from (https://dev.reclaimprotocol.org/)
-    const reclaim = new ReclaimClient("0xF218B59D7794e32693f5D3236e011C233E249105", "0xe7cc556f58d92618e04ebbd16744be753eb4d06d569590df341c89e25f6ecc9c", true)
+    // Get your APP_ID and APP_SECRET from the Reclaim Devtool (https://dev.reclaimprotocol.org/) 
+    const reclaim = new ReclaimClient(process.env.APP_ID!, process.env.APP_SECRET!, true)
     const options = {
         method: "GET",
         headers: {
