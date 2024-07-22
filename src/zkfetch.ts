@@ -1,4 +1,4 @@
-import { createClaim } from "@reclaimprotocol/witness-sdk";
+import { createClaimOnWitness } from "@reclaimprotocol/witness-sdk";
 import { HttpMethod, LogType } from "./types";
 import { Options, secretOptions } from "./interfaces";
 import {
@@ -11,6 +11,7 @@ import {
 import { v4 } from "uuid";
 import P from "pino";
 import { FetchError } from "./errors";
+import { WITNESS_NODE_URL } from "./constants";
 const logger = P();
 
 export class ReclaimClient {
@@ -69,8 +70,8 @@ export class ReclaimClient {
           );
         }
         const fetchResponse = await response.text();
-        const claim = await createClaim({
-          name: "http",
+        const claim = await createClaimOnWitness({
+          name: 'http',
           params: {
             method: fetchOptions.method as HttpMethod,
             url: url,
@@ -81,6 +82,7 @@ export class ReclaimClient {
               },
             ],
             headers: options?.headers,
+            geoLocation: options?.geoLocation,
             responseRedactions: [],
             body: fetchOptions.body,
           },
@@ -89,7 +91,10 @@ export class ReclaimClient {
             ...secretOptions,
           },
           ownerPrivateKey: this.applicationSecret,
-          logger: logger,
+          logger: logger,       
+          client: {
+            url: WITNESS_NODE_URL,
+          }
         });
 
         await sendLogs({
@@ -97,7 +102,6 @@ export class ReclaimClient {
           logType: LogType.PROOF_GENERATED,
           applicationId: this.applicationId,
         });
-
         return claim;
       } catch (error: any) {
         attempt++;

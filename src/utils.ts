@@ -1,5 +1,5 @@
 import { ApplicationError, DisallowedOptionError, InvalidMethodError, InvalidParamError, NetworkError } from './errors';
-import { ApplicationId, ApplicationSecret, DisallowedOption, HttpMethod } from './types'
+import { ApplicationId, ApplicationSecret, HttpMethod } from './types'
 import { Options, secretOptions, SendLogsParams } from './interfaces';
 import { ethers } from 'ethers';
 import { APP_BACKEND_URL, LOGS_BACKEND_URL } from './constants';
@@ -15,12 +15,6 @@ export function assertCorrectnessOfOptions(options: Options): void {
   }
   if (options.method !== HttpMethod.GET && options.method !== HttpMethod.POST) {
      throw new InvalidMethodError(`Method ${options.method} is not allowed`);
-  }
-  const disallowedOptions: DisallowedOption[] = ["mode", "cache", "credentials", "redirect", "referrerPolicy"];
-  for (const option of disallowedOptions) {
-    if (options[option as keyof Options]) {
-      throw new DisallowedOptionError(`Option: ${option} is not allowed`);
-    }
   }
 }
 

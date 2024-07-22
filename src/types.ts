@@ -3,8 +3,6 @@ export enum HttpMethod {
     POST = "POST",
 }
 
-export type DisallowedOption = "mode" | "cache" | "credentials" | "redirect" | "referrerPolicy"
-
 export enum LogType {
     VERIFICATION_STARTED = 'VERIFICATION_STARTED',
     PROOF_GENERATED = 'PROOF_GENERATED',

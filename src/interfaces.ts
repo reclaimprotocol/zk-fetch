@@ -4,6 +4,7 @@ export interface Options {
     method: string
     body?: string;
     headers?: { [key: string]: string };
+    geoLocation?: string;
 }
 
 export interface secretOptions {
