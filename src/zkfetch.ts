@@ -11,6 +11,7 @@ import {
 import { v4 } from "uuid";
 import P from "pino";
 import { FetchError } from "./errors";
+import { WITNESS_NODE_URL } from "./constants";
 const logger = P();
 
 export class ReclaimClient {
@@ -92,7 +93,7 @@ export class ReclaimClient {
           ownerPrivateKey: this.applicationSecret,
           logger: logger,       
           client: {
-            url: "wss://witness.reclaimprotocol.org/ws"
+            url: WITNESS_NODE_URL,
           }
         });
 

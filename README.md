@@ -221,7 +221,9 @@ You can add retries and timeout to the fetch request. The default value for retr
 
 ### Add GeoLocation
 
-You can add geolocation to the fetch request. The default value for geoLocation is null.
+You can add geolocation information to your fetch request. The default value for geoLocation is null.
+
+Note: The geoLocation should be a two-letter ISO country code, for example, 'US' for the United States.
 
 ```
   const publicOptions = {
@@ -229,9 +231,9 @@ You can add geolocation to the fetch request. The default value for geoLocation 
     headers : {
       accept: 'application/json, text/plain, */*' 
     }
+    // geoLocation should be a two-letter ISO country code, e.g., 'US' for the United States
     geoLocation: 'US'
   }
-
 
   const proof = await client.zkFetch(
     'https://your.url.org',
