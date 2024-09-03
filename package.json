@@ -22,7 +22,7 @@
   "author": "madhavanmalolan",
   "license": "SEE LICENSE IN https://gitlab.reclaimprotocol.org/integrations/offchain/zk-fetch/-/blob/master/LICENSE.md",
   "dependencies": {
-    "@reclaimprotocol/witness-sdk": "^2.0.0",
+    "@reclaimprotocol/witness-sdk": "^2.0.2",
     "@swc/core": "^1.6.13",
     "ethers": "^6.13.0",
     "pino": "^8.20.0",

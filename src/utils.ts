@@ -1,9 +1,10 @@
 import { ApplicationError, DisallowedOptionError, InvalidMethodError, InvalidParamError, NetworkError } from './errors';
 import { ApplicationId, ApplicationSecret, HttpMethod } from './types'
-import { Options, secretOptions, SendLogsParams } from './interfaces';
+import { Options, Proof, secretOptions, SendLogsParams } from './interfaces';
 import { ethers } from 'ethers';
-import { APP_BACKEND_URL, LOGS_BACKEND_URL } from './constants';
+import { APP_BACKEND_URL, LOGS_BACKEND_URL, WITNESS_NODE_URL } from './constants';
 import P from "pino";
+import { ClaimTunnelResponse } from '@reclaimprotocol/witness-sdk/lib/proto/api';
 const logger = P();
 
 /*
@@ -59,6 +60,27 @@ export function validateApplicationIdAndSecret(applicationId: ApplicationId, app
   catch (error) {
     throw new InvalidParamError(`Invalid applicationId and applicationSecret passed to the constructor.`);
   }
+}
+
+/* Transform Proof */
+export function transformProof(proof: ClaimTunnelResponse): Proof {
+  if (!proof || !proof.claim || !proof.signatures) {
+    throw new InvalidParamError("Invalid proof object");
+  }
+  return {
+    claimData: proof.claim,
+    identifier: proof.claim.identifier,
+    signatures: [
+      "0x" + Buffer.from(proof.signatures.claimSignature).toString("hex"),
+    ],
+    extractedParameterValues: proof?.claim?.context ? JSON?.parse(proof?.claim?.context)?.extractedParameters : '',
+    witnesses: [
+      {
+        id: "0x" + Buffer.from(proof.signatures.witnessAddress).toString("hex"),
+        url: WITNESS_NODE_URL,
+      },
+    ],
+  };
 }
 
 /* 

@@ -7,6 +7,7 @@ import {
   sendLogs,
   validateApplicationIdAndSecret,
   assertCorrectionOfSecretOptions,
+  transformProof,
 } from "./utils";
 import { v4 } from "uuid";
 import P from "pino";
@@ -46,13 +47,13 @@ export class ReclaimClient {
     if (options !== undefined) {
       assertCorrectnessOfOptions(options);
     }
-    if (secretOptions)  {
+    if (secretOptions) {
       assertCorrectionOfSecretOptions(secretOptions);
     }
     const fetchOptions = {
-                method: options?.method || HttpMethod.GET,
-                body: options?.body,
-                headers: { ...options?.headers, ...secretOptions?.headers },
+      method: options?.method || HttpMethod.GET,
+      body: options?.body,
+      headers: { ...options?.headers, ...secretOptions?.headers },
     };
     await sendLogs({
       sessionId: this.sessionId,
@@ -63,19 +64,25 @@ export class ReclaimClient {
     let attempt = 0;
     while (attempt < retries) {
       try {
-        const response = await fetch(url, fetchOptions);
-        if (!response.ok) {
-          throw new FetchError(
-            `Failed to fetch ${url} with status ${response.status}`
-          );
+        let fetchResponse = "";
+        if (
+          !secretOptions?.responseMatches &&
+          !secretOptions?.responseRedactions
+        ) {
+          const response = await fetch(url, fetchOptions);
+          if (!response.ok) {
+            throw new FetchError(
+              `Failed to fetch ${url} with status ${response.status}`
+            );
+          }
+          fetchResponse = await response.text();
         }
-        const fetchResponse = await response.text();
         const claim = await createClaimOnWitness({
-          name: 'http',
+          name: "http",
           params: {
             method: fetchOptions.method as HttpMethod,
             url: url,
-            responseMatches: [
+            responseMatches: secretOptions?.responseMatches || [
               {
                 type: "contains",
                 value: fetchResponse,
@@ -83,27 +90,30 @@ export class ReclaimClient {
             ],
             headers: options?.headers,
             geoLocation: options?.geoLocation,
-            responseRedactions: [],
-            body: fetchOptions.body,
+            responseRedactions: secretOptions?.responseRedactions || [],
+            body: fetchOptions.body || "",
           },
           secretParams: {
             cookieStr: "abc=pqr",
-            ...secretOptions,
+            headers: secretOptions?.headers,
           },
           ownerPrivateKey: this.applicationSecret,
-          logger: logger,       
+          logger: logger,
           client: {
             url: WITNESS_NODE_URL,
-          }
+          },
         });
+        if (claim.error) {
+          throw new Error(`Failed to create claim on witness: ${claim.error.message}`);
+        }
 
         await sendLogs({
           sessionId: this.sessionId,
           logType: LogType.PROOF_GENERATED,
           applicationId: this.applicationId,
         });
-        return claim;
-      } catch (error: any) {
+        return transformProof(claim);
+      } catch (error) {
         attempt++;
         if (attempt >= retries) {
           await sendLogs({
@@ -118,5 +128,4 @@ export class ReclaimClient {
       }
     }
   }
-
 }
