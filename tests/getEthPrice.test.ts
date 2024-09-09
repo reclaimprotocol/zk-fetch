@@ -3,6 +3,5 @@ import { expect, test } from 'vitest'
 
 test('getEthPrice', async () => {
     const ethPriceProof = await getEthPrice();
-    expect(ethPriceProof?.claim?.context).toBeDefined()
-
+    expect(parseFloat(ethPriceProof?.extractedParameterValues?.price)).toBeGreaterThan(0);
 }, 100000);

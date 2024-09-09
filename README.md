@@ -113,59 +113,75 @@ This is used when the proof needs guarantees on who generated it. This is partic
   )
 ```
 
+### Using Response Matches and Redactions
+
+You can also use responseMatches and responseRedactions to match and redact the response. This is useful when you want to verify the response against a particular value or redact some part of the response.
+
+```
+ const publicOptions = {
+    method: 'GET', // or POST
+    headers : {
+      accept: 'application/json, text/plain, */*' 
+    }
+  }
+
+  const privateOptions = {
+    responseMatches: [
+      {
+        type: 'contains' | 'regex', // type of match 
+        value: '<HTTP RESPONSE TEXT>' | '<REGEX>', // value to match or regex to match 
+      }
+    ],
+    responseRedactions: [
+      {
+        jsonPath: '$.data', // JSON path to redact 
+        xPath: '/data', // Xpath to redact  
+        regex: '<REGEX>', // Regex to redact
+      }
+    ]
+  }
+
+  const proof = await client.zkFetch(
+    'https://your.url.org',
+    publicOptions,
+    privateOptions
+  )
+```
+
+Note: The responseMatches and responseRedactions are optional and can be used as per the requirement.
+
+
 ## Using the response
+
 The response looks like the follows
 ```
-    {
-  request: {
-    request: {
-      id: 1820248759,
-      host: 'api.coingecko.com',
-      port: 443,
-      geoLocation: ''
-    },
-    data: {
-      provider: 'http',
-      parameters: '{"method":"GET","responseMatches":[{"type":"contains","value":"{\\"ethereum\\":{\\"usd\\":3436.38}}"}],"responseRedactions":[],"url":"https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd"}',
-      owner: '0xf218b59d7794e32693f5d3236e011c233e249105',
-      timestampS: 1721298792,
-      context: ''
-    },
-    transcript: [
-      [{
-    sender: 1,
-    message: <Buffer 16 03 03 01 93 01a 4b 06 19 20 6c 69 b8 b0 54 7e ... 358 more bytes>,
-  },...],
-    ],
-    signatures: {
-      requestSignature: <Buffer 36 8b 35 d0 82 66 43 d6 18 04 97 25 7e 17 70 bc d3 fc ad 27 aa e9 b1 c9 39 ... 15 more bytes>
-    },
-    zkEngine: 0
-  },
-  claim: {
+{
+  claimData: {
     provider: 'http',
-    parameters: '{"method":"GET","responseMatches":[{"type":"contains","value":"{\\"ethereum\\":{\\"usd\\":3436.38}}"}],"responseRedactions":[],"url":"https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd"}',
-    owner: '0xf218b59d7794e32693f5d3236e011c233e249105',
-    timestampS: 1721298792,
-    context: '',
-    identifier: '0xc0bae7878d46ca70d86dcb37782385ba78162625cc2a2f3dc5cf05ba76cc3b58',
+    parameters: '{"body":"","method":"GET","responseMatches":[{"type":"regex","value":"ethereum\\":{\\"usd\\":(?<price>.*?)}}"}],"responseRedactions":[],"url":"https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd"}',
+    owner: '0x96faf173bb7171a530b3e44f35f32d1307bda4fa',
+    timestampS: 1725377559,
+    context: '{"extractedParameters":{"price":"2446.75"},"providerHash":"0xe5a9592ed030d011f1755f392c07aea1f3cb0492ad8910254b25f80ad556e3bb"}',
+    identifier: '0x8518b246857a47658edc8314319305c1fb5eb666ec3ee36ae07e1564c73ff288',
     epoch: 1
   },
-  error: undefined,
-  signatures: {
-    witnessAddress: '0x244897572368eadf65bfbc5aec98d8e5443a9072',
-    claimSignature: <Buffer c2 ba bd cf 7a  8d bf 49 e7 73 86 df ee 8d c4 15 e6 12 5c d5 da aa 61 b6 2a 96 d6 ... 15 more bytes>,
-    resultSignature: <Buffer 19 b7 71 36 5e de 68 72 3f 8c 59 40 95 bf ad 24 f1 24 bc b8 d6 bd ... 15 more bytes>
-  }
+  identifier: '0x8518b246857a47658edc8314319305c1fb5eb666ec3ee36ae07e1564c73ff288',
+  signatures: [
+    '0x02d14b5f3377875ecab84125e53c2387b7b1a50b4762840b33dd24117326b88670818e24668aa65c5e80f8d71c192ba5803a9ca1415d72a81f3efcf1341379d41c'
+  ],
+  extractedParameterValues: { price: '2446.75' },
+  witnesses: [
+    {
+      id: '0x307832343438393735373233363865616466363562666263356165633938643865353434336139303732',
+      url: 'wss://witness.reclaimprotocol.org/ws'
+    }
+  ]
 }
 ```
 
-To use the response, 
-```
-  const verifiedResponse = JSON.parse(proof?.claim?.context)?.responseMatches[0]?.value
-```
+### Verify the proofs and transform proof for onchain
 
-### Verify the proofs
+#### Verify the proofs
 
 Install @reclaimprotocol/js-sdk
 
@@ -190,6 +206,18 @@ const isProofVerified = await Reclaim.verifySignedProof(proof);
 it verifies the authenticity and completeness of a given proof. It checks if the proof contains signatures, recalculates the proof identifier, and verifies it against the provided signatures. If the verification fails, it will log the error and return false.
 
 More information about the verifySignedProof method can be found [here](https://docs.reclaimprotocol.org/sdk-methods#verifysignedproofproof--promiseboolean)
+
+#### Transform proof for onchain
+
+Transforms proof data into a format suitable for on-chain transactions, you need to use it before sending the proof to the blockchain.
+
+Use Reclaim.transformForOnchain(proof) from the js-sdk to transform the proof for onchain.
+
+```javascript
+const onchainProof = Reclaim.transformForOnchain(proof);
+```
+
+
 
 ### Add Retries and Retry Interval
 
@@ -243,7 +271,11 @@ Note: The geoLocation should be a two-letter ISO country code, for example, 'US'
 ```
 
 ## More examples
-You can see an example of how to use zkFetch [here](https://gitlab.reclaimprotocol.org/starterpacks/reclaim-zkfetch-client).
+
+you can find more examples/starter packs here 
+
+- [React Example](https://gitlab.reclaimprotocol.org/starterpacks/reclaim-zkfetch-client)
+- [Express Example](https://gitlab.reclaimprotocol.org/starterpacks/zkfetch-express-example)
 
 ## License 
 This library is governed by an [AGPL](./LICENSE.md) license.
