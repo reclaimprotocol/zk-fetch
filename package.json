@@ -13,7 +13,8 @@
     ],
     "splitting": false,
     "sourcemap": true,
-    "clean": true
+    "clean": true,
+    "external": ["koffi", "jsdom"]
   },
   "scripts": {
     "build": "sh build.sh",
@@ -22,14 +23,13 @@
   "author": "madhavanmalolan",
   "license": "SEE LICENSE IN https://gitlab.reclaimprotocol.org/integrations/offchain/zk-fetch/-/blob/master/LICENSE.md",
   "dependencies": {
-    "@reclaimprotocol/witness-sdk": "^2.0.2",
+    "@reclaimprotocol/attestor-core": "^3.0.1",
     "@swc/core": "^1.6.13",
-    "ethers": "^6.13.0",
+    "ethers": "^5.7.2",
     "pino": "^8.20.0",
     "uuid": "^9.0.1"
   },
   "devDependencies": {
-    "@types/jest": "^29.5.12",
     "@types/uuid": "^9.0.8",
     "tsup": "^8.1.0",
     "typescript": "^5.4.5",
