@@ -85,34 +85,6 @@ This is useful when
 
 All the data in the privateOptions will stay hidden to the verifier.
 
-### For commiting proofs
-This is used when the proof needs guarantees on who generated it. This is particularly useful when you want to reward thirdparty entities for generating proofs of fetch responses.
-
-```  
-
-  //beta
-
-  const publicOptions = {
-    method: 'GET', // or POST
-    headers : {
-      accept: 'application/json, text/plain, */*' 
-    }
-  }
-
-  const privateOptions = {
-    headers {
-        apiKey: "123...456",
-        someOtherHeader: "someOtherValue",
-    }
-  }
-
-  const proof = await client.zkFetch(
-    'https://your.url.org',
-    publicOptions,
-    privateOptions,
-  )
-```
-
 ### Using Secret Params
 
 You can add secret params to the request. This won't be revealed in the proof and hidden from the verifier.
@@ -140,6 +112,17 @@ For example, here's how you can make a POST request with a body containing a JSO
 ```
 
 This will replace the '{{value}}' in the body with 'secret_value' and send the request to the server. but the secret_value will remain hidden from the verifier and will not be revealed in the proof.
+
+### Using CookieStr 
+
+You can add cookieStr to the request. This won't be revealed in the proof and hidden from the verifier.
+
+```
+  const privateOptions = {
+    cookieStr: 'cookie_value'
+  }
+```
+
 
 ### Using Response Matches and Redactions
 
