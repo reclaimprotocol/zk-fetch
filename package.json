@@ -13,8 +13,7 @@
     ],
     "splitting": false,
     "sourcemap": true,
-    "clean": true,
-    "external": ["koffi", "jsdom"]
+    "clean": true
   },
   "scripts": {
     "build": "sh build.sh",
@@ -23,7 +22,7 @@
   "author": "madhavanmalolan",
   "license": "SEE LICENSE IN https://gitlab.reclaimprotocol.org/integrations/offchain/zk-fetch/-/blob/master/LICENSE.md",
   "dependencies": {
-    "@reclaimprotocol/attestor-core": "^3.0.1",
+    "@reclaimprotocol/attestor-core": "3.0.5",
     "@swc/core": "^1.6.13",
     "ethers": "^5.7.2",
     "pino": "^8.20.0",

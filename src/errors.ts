@@ -5,14 +5,6 @@ export class InvalidParamError extends Error {
     }
 }
 
-
-export class DisallowedOptionError extends Error {
-    constructor(message?: string) {
-        super(message)
-        this.name = 'DisallowedOptionError'
-    }
-}
-
 export class InvalidMethodError extends Error {
     constructor(message?: string) {
         super(message)

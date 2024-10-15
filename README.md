@@ -113,6 +113,34 @@ This is used when the proof needs guarantees on who generated it. This is partic
   )
 ```
 
+### Using Secret Params
+
+You can add secret params to the request. This won't be revealed in the proof and hidden from the verifier.
+
+For example, here's how you can make a POST request with a body containing a JSON object that includes a secret value
+```
+  const publicOptions = {
+    method: 'POST',
+    body: JSON.stringify({
+      'param1': '{{value}}'
+    })
+  }
+
+  const privateOptions = {
+    paramValues: {
+      'value': 'secret_value'
+    }
+  }
+
+  const proof = await client.zkFetch(
+    'https://your.url.org',
+    publicOptions,
+    privateOptions
+  )
+```
+
+This will replace the '{{value}}' in the body with 'secret_value' and send the request to the server. but the secret_value will remain hidden from the verifier and will not be revealed in the proof.
+
 ### Using Response Matches and Redactions
 
 You can also use responseMatches and responseRedactions to match and redact the response. This is useful when you want to verify the response against a particular value or redact some part of the response.

@@ -1,4 +1,4 @@
-import { createClaimOnWitness } from "@reclaimprotocol/witness-sdk";
+import { createClaimOnAttestor } from "@reclaimprotocol/attestor-core";
 import { HttpMethod, LogType } from "./types";
 import { Options, secretOptions } from "./interfaces";
 import {
@@ -6,7 +6,6 @@ import {
   validateURL,
   sendLogs,
   validateApplicationIdAndSecret,
-  assertCorrectionOfSecretOptions,
   transformProof,
 } from "./utils";
 import { v4 } from "uuid";
@@ -47,9 +46,6 @@ export class ReclaimClient {
     if (options !== undefined) {
       assertCorrectnessOfOptions(options);
     }
-    if (secretOptions) {
-      assertCorrectionOfSecretOptions(secretOptions);
-    }
     const fetchOptions = {
       method: options?.method || HttpMethod.GET,
       body: options?.body,
@@ -67,7 +63,8 @@ export class ReclaimClient {
         let fetchResponse = "";
         if (
           !secretOptions?.responseMatches &&
-          !secretOptions?.responseRedactions
+          !secretOptions?.responseRedactions && 
+          !secretOptions?.paramValues
         ) {
           const response = await fetch(url, fetchOptions);
           if (!response.ok) {
@@ -77,7 +74,7 @@ export class ReclaimClient {
           }
           fetchResponse = await response.text();
         }
-        const claim = await createClaimOnWitness({
+        const claim = await createClaimOnAttestor({
           name: "http",
           params: {
             method: fetchOptions.method as HttpMethod,
@@ -92,10 +89,12 @@ export class ReclaimClient {
             geoLocation: options?.geoLocation,
             responseRedactions: secretOptions?.responseRedactions || [],
             body: fetchOptions.body || "",
+            paramValues: options?.paramValues,
           },
           secretParams: {
-            cookieStr: "abc=pqr",
-            headers: secretOptions?.headers,
+            cookieStr: secretOptions?.cookieStr || 'abc=pqr',
+            headers: secretOptions?.headers ,
+            paramValues: secretOptions?.paramValues,
           },
           ownerPrivateKey: this.applicationSecret,
           logger: logger,

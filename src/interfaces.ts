@@ -5,13 +5,15 @@ export interface Options {
     body?: string;
     headers?: { [key: string]: string };
     geoLocation?: string;
+    paramValues?: { [key: string]: string };
 }
 
 export interface secretOptions {
-  body?: string;
   headers?: { [key: string]: string };
   responseMatches?: { type: 'regex' | 'contains', value: string }[];
   responseRedactions?: { regex?: string, jsonPath?: string, xPath?: string }[];
+  cookieStr?: string;
+  paramValues?: { [key: string]: string };
 }
 
 export interface SendLogsParams {
