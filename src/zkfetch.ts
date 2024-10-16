@@ -92,8 +92,8 @@ export class ReclaimClient {
             paramValues: options?.paramValues,
           },
           secretParams: {
-            cookieStr: secretOptions?.cookieStr || 'abc=pqr',
-            headers: secretOptions?.headers ,
+            cookieStr: secretOptions?.cookieStr || "",
+            headers: secretOptions?.headers || {},
             paramValues: secretOptions?.paramValues,
           },
           ownerPrivateKey: this.applicationSecret,
