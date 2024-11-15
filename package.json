@@ -1,6 +1,6 @@
 {
   "name": "@reclaimprotocol/zk-fetch",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "HTTPS Fetch with a zkproof of correctness of fetch",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -22,7 +22,7 @@
   "author": "madhavanmalolan",
   "license": "SEE LICENSE IN https://gitlab.reclaimprotocol.org/integrations/offchain/zk-fetch/-/blob/master/LICENSE.md",
   "dependencies": {
-    "@reclaimprotocol/attestor-core": "3.0.5",
+    "@reclaimprotocol/attestor-core": "3.0.6",
     "@swc/core": "^1.6.13",
     "ethers": "^5.7.2",
     "pino": "^8.20.0",
