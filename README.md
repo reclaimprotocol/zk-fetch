@@ -1,34 +1,58 @@
 # zkFetch.js
 _fetch, but with a zkproof_
 
-This library lets you fetch any remote resource over an https endpoint. Along with the response, you also get a proof of correct execution of the fetch that can be verified by a third party. 
+## Overview
+This library lets you fetch any remote resource over an https endpoint. Along with the response, you also get a proof of correct execution of the fetch that can be verified by a third party.
 
 For example, if you do a fetch with a private api key that the third party doesn't have access to, how do you prove to them that you executed the fetch correctly using the api key, and not sharing with them an arbitrary or tampered response? zkfetch.
 
-zkFetch is based on [Reclaim Protocol](https://reclaimprotocol.org)
+Key features:
+- Generate verifiable proofs of HTTP requests
+- Support for private credentials (API keys, auth headers) and secret params
+- Response matching and redaction
+- Built on [Reclaim Protocol](https://reclaimprotocol.org)
 
-**Note : We recommend using zkproof only for data that is unlikely to change within 5s, i.e. during the process of proof generation**
+**Note:** For optimal proof generation, use zkFetch with relatively stable data that doesn't change frequently (within ~5s).
 
-## Pre-requisites
+## Installation
 
-An application ID and secret from Reclaim Protocol. You can get one from the  [Reclaim Developer Protocol](https://dev.reclaimprotocol.org/)
+```bash
+# Install the package
+npm install @reclaimprotocol/zk-fetch
 
-## Usage
-
+# Download required ZK proof files
+node node_modules/@reclaimprotocol/zk-symmetric-crypto/lib/scripts/download-files
 ```
-$ npm install @reclaimprotocol/zk-fetch
-```
 
-Import 
-```
-  const { ReclaimClient } = require("@reclaimprotocol/zk-fetch");
-```
+## Prerequisites
 
-### Initialize Reclaim Client
+- An application ID and secret from the [Reclaim Developer Portal](https://dev.reclaimprotocol.org/)
+
+## Quick Start
 
 ```javascript
-const client = new Reclaim('APPLICATION_ID', 'APPLICATION_SECRET');
+const { ReclaimClient } = require("@reclaimprotocol/zk-fetch");
+
+// Initialize client
+const client = new ReclaimClient('APPLICATION_ID', 'APPLICATION_SECRET');
+
+// Make a verified request
+const proof = await client.zkFetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd', {
+  method: 'GET',
+  headers: {
+    accept: 'application/json'
+  }
+}, {
+  responseMatches: [{
+    type: 'regex',
+    value: 'ethereum":{"usd":(?<price>.*?)}}',
+  }],
+  responseRedactions: [{ regex: 'ethereum":{"usd":(?<price>.*?)}}'}],  
+});
 ```
+
+
+## Usage
 
 ### For public endpoints
 If the endpoint you want to _fetch_ and generate a proof of the response. This endpoint is public, and doesn't need any private data like auth headers/api keys.
@@ -40,7 +64,7 @@ This is useful when
 
 ```
   const publicOptions = {
-    method: 'GET', // or POST
+    method: 'GET', // or POST or PUT
     headers : {
         accept: 'application/json, text/plain, */*' 
     }
@@ -159,7 +183,18 @@ You can also use responseMatches and responseRedactions to match and redact the 
   )
 ```
 
-Note: The responseMatches and responseRedactions are optional and can be used as per the requirement.
+### Using Context
+
+You can add context to your proof request, which can be useful for providing additional information:
+
+```
+  const publicOptions = {
+    context: {
+      contextAddress: '0x0000000000000000000000000000000000000000',
+      contextMessage: 'message'
+    }
+  }
+```
 
 
 ## Using the response
@@ -172,7 +207,7 @@ The response looks like the follows
     parameters: '{"body":"","method":"GET","responseMatches":[{"type":"regex","value":"ethereum\\":{\\"usd\\":(?<price>.*?)}}"}],"responseRedactions":[],"url":"https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd"}',
     owner: '0x96faf173bb7171a530b3e44f35f32d1307bda4fa',
     timestampS: 1725377559,
-    context: '{"extractedParameters":{"price":"2446.75"},"providerHash":"0xe5a9592ed030d011f1755f392c07aea1f3cb0492ad8910254b25f80ad556e3bb"}',
+    context: '{"contextAddress":"0x0000000000000000000000000000000000000000","contextMessage":"message","extractedParameters":{"price":"2446.75"},"providerHash":"0xe5a9592ed030d011f1755f392c07aea1f3cb0492ad8910254b25f80ad556e3bb"}',
     identifier: '0x8518b246857a47658edc8314319305c1fb5eb666ec3ee36ae07e1564c73ff288',
     epoch: 1
   },
@@ -200,34 +235,37 @@ Install @reclaimprotocol/js-sdk
 $ npm install @reclaimprotocol/js-sdk
 ```
 
-Import the Reclaim class from the js-sdk
+Import the verifyProof function from the js-sdk
 
 ```javascript
-const { Reclaim } = require('@reclaimprotocol/js-sdk');
+const { verifyProof } = require('@reclaimprotocol/js-sdk');
 ```
 
-Use Reclaim.verifySignedProof(proof)
+Use verifyProof(proof)
 
 You must send the proofObject and not the verifiedResponse to the verifier for them to be able to verify.
 
 ```javascript
-const isProofVerified = await Reclaim.verifySignedProof(proof);
+const isProofVerified = await verifyProof(proof);
 ```
 
 it verifies the authenticity and completeness of a given proof. It checks if the proof contains signatures, recalculates the proof identifier, and verifies it against the provided signatures. If the verification fails, it will log the error and return false.
-
-More information about the verifySignedProof method can be found [here](https://docs.reclaimprotocol.org/sdk-methods#verifysignedproofproof--promiseboolean)
 
 #### Transform proof for onchain
 
 Transforms proof data into a format suitable for on-chain transactions, you need to use it before sending the proof to the blockchain.
 
-Use Reclaim.transformForOnchain(proof) from the js-sdk to transform the proof for onchain.
+Import the transformForOnchain function from the js-sdk
 
 ```javascript
-const onchainProof = Reclaim.transformForOnchain(proof);
+const { transformForOnchain } = require('@reclaimprotocol/js-sdk');
 ```
 
+Use transformForOnchain(proof) to transform the proof for onchain.
+
+```javascript
+const onchainProof = transformForOnchain(proof);
+```
 
 
 ### Add Retries and Retry Interval
