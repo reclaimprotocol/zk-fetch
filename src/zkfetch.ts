@@ -10,7 +10,6 @@ import {
 } from "./utils";
 import { v4 } from "uuid";
 import P from "pino";
-import { FetchError } from "./errors";
 import { WITNESS_NODE_URL } from "./constants";
 const logger = P();
 
@@ -46,11 +45,6 @@ export class ReclaimClient {
     if (options !== undefined) {
       assertCorrectnessOfOptions(options);
     }
-    const fetchOptions = {
-      method: options?.method || HttpMethod.GET,
-      body: options?.body,
-      headers: { ...options?.headers, ...secretOptions?.headers },
-    };
     await sendLogs({
       sessionId: this.sessionId,
       logType: LogType.VERIFICATION_STARTED,
@@ -60,42 +54,30 @@ export class ReclaimClient {
     let attempt = 0;
     while (attempt < retries) {
       try {
-        let fetchResponse = "";
-        if (
-          !secretOptions?.responseMatches &&
-          !secretOptions?.responseRedactions && 
-          !secretOptions?.paramValues
-        ) {
-          const response = await fetch(url, fetchOptions);
-          if (!response.ok) {
-            throw new FetchError(
-              `Failed to fetch ${url} with status ${response.status}`
-            );
-          }
-          fetchResponse = await response.text();
-        }
         const claim = await createClaimOnAttestor({
           name: "http",
           params: {
-            method: fetchOptions.method as HttpMethod,
+            method: options?.method as HttpMethod || HttpMethod.GET,
             url: url,
             responseMatches: secretOptions?.responseMatches || [
               {
-                type: "contains",
-                value: fetchResponse,
+                type: "regex",
+                value: "(?<data>.*)",
               },
             ],
             headers: options?.headers,
             geoLocation: options?.geoLocation,
             responseRedactions: secretOptions?.responseRedactions || [],
-            body: fetchOptions.body || "",
+            body: options?.body || "",
             paramValues: options?.paramValues,
           },
+          context: options?.context,
           secretParams: {
             cookieStr: secretOptions?.cookieStr || "",
             headers: secretOptions?.headers || {},
             paramValues: secretOptions?.paramValues,
           },
+          maxZkChunks: 500,
           ownerPrivateKey: this.applicationSecret,
           logger: logger,
           client: {

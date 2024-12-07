@@ -20,9 +20,9 @@
     "test": "vitest"
   },
   "author": "madhavanmalolan",
-  "license": "SEE LICENSE IN https://gitlab.reclaimprotocol.org/integrations/offchain/zk-fetch/-/blob/master/LICENSE.md",
+  "license": "SEE LICENSE IN https://github.com/reclaimprotocol/zk-fetch/blob/master/LICENSE.md",
   "dependencies": {
-    "@reclaimprotocol/attestor-core": "3.0.6",
+    "@reclaimprotocol/attestor-core": "3.1.1",
     "@swc/core": "^1.6.13",
     "ethers": "^5.7.2",
     "pino": "^8.20.0",

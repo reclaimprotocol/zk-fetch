@@ -6,6 +6,7 @@ export interface Options {
     headers?: { [key: string]: string };
     geoLocation?: string;
     paramValues?: { [key: string]: string };
+    context?: { contextAddress: string, contextMessage: string };
 }
 
 export interface secretOptions {

@@ -14,7 +14,7 @@ export function assertCorrectnessOfOptions(options: Options): void {
   if (!options.method) {
     throw new InvalidParamError('Method is required');
   }
-  if (options.method !== HttpMethod.GET && options.method !== HttpMethod.POST) {
+  if (options.method !== HttpMethod.GET && options.method !== HttpMethod.POST && options.method !== HttpMethod.PUT) {
      throw new InvalidMethodError(`Method ${options.method} is not allowed`);
   }
 }

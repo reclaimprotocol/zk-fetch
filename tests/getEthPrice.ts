@@ -10,16 +10,17 @@ export const getEthPrice = async () => {
         headers: {
             'Content-Type': 'application/json',
         },
+        context: {
+            contextAddress: "0x0000000000000000000000000000000000000000",
+            contextMessage: "eth_price"
+        }
     }
     const privateOptions = {
         responseMatches: [{
             type: 'regex' as const,
             value: 'ethereum":{"usd":(?<price>.*?)}}',
         }],
-        responseRedactions: [{
-            regex: 'ethereum":{"usd":(?<price>.*?)}}',
-        }]
-        
+        responseRedactions: [{ regex: 'ethereum":{"usd":(?<price>.*?)}}'}],  
     }
     const url = "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd";
     return await reclaim.zkFetch(url, options, privateOptions)
