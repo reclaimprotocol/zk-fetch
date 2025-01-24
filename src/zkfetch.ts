@@ -10,7 +10,7 @@ import {
 } from "./utils";
 import { v4 } from "uuid";
 import P from "pino";
-import { WITNESS_NODE_URL } from "./constants";
+import { ATTESTOR_NODE_URL } from "./constants";
 const logger = P();
 
 export class ReclaimClient {
@@ -81,11 +81,11 @@ export class ReclaimClient {
           ownerPrivateKey: this.applicationSecret,
           logger: logger,
           client: {
-            url: WITNESS_NODE_URL,
+            url: ATTESTOR_NODE_URL,
           },
         });
         if (claim.error) {
-          throw new Error(`Failed to create claim on witness: ${claim.error.message}`);
+          throw new Error(`Failed to create claim on attestor: ${claim.error.message}`);
         }
 
         await sendLogs({

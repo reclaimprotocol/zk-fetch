@@ -2,7 +2,7 @@ import { ApplicationError, InvalidMethodError, InvalidParamError, NetworkError }
 import { ApplicationId, ApplicationSecret, HttpMethod } from './types'
 import { Options, Proof, SendLogsParams } from './interfaces';
 import { ethers } from 'ethers';
-import { APP_BACKEND_URL, LOGS_BACKEND_URL, WITNESS_NODE_URL } from './constants';
+import { APP_BACKEND_URL, LOGS_BACKEND_URL, ATTESTOR_NODE_URL } from './constants';
 import P from "pino";
 import { ClaimTunnelResponse } from '@reclaimprotocol/attestor-core/lib/proto/api';
 const logger = P();
@@ -71,7 +71,7 @@ export function transformProof(proof: ClaimTunnelResponse): Proof {
     witnesses: [
       {
         id: proof?.signatures?.attestorAddress,
-        url: WITNESS_NODE_URL,
+        url: ATTESTOR_NODE_URL,
       },
     ],
   };
