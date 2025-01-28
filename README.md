@@ -26,7 +26,9 @@ node node_modules/@reclaimprotocol/zk-symmetric-crypto/lib/scripts/download-file
 
 ## Prerequisites
 
+- Node.js version 18 or higher
 - An application ID and secret from the [Reclaim Developer Portal](https://dev.reclaimprotocol.org/)
+
 
 ## Quick Start
 
