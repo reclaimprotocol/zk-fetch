@@ -22,7 +22,7 @@
   "author": "madhavanmalolan",
   "license": "SEE LICENSE IN https://github.com/reclaimprotocol/zk-fetch/blob/master/LICENSE.md",
   "dependencies": {
-    "@reclaimprotocol/attestor-core": "git+https://github.com/reclaimprotocol/attestor-core",
+    "@reclaimprotocol/attestor-core": "4.0.0",
     "@swc/core": "^1.6.13",
     "ethers": "^5.7.2",
     "pino": "^8.20.0",
