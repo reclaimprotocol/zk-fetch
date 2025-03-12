@@ -77,7 +77,6 @@ export class ReclaimClient {
             headers: secretOptions?.headers || {},
             paramValues: secretOptions?.paramValues,
           },
-          maxZkChunks: 500,
           ownerPrivateKey: this.applicationSecret,
           logger: logger,
           client: {
