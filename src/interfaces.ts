@@ -21,7 +21,7 @@ export interface SendLogsParams {
   sessionId: string;
   logType: LogType;
   applicationId: string;
-  appBackendUrl: string;
+  appBackendUrl?: string;
 }
 
 

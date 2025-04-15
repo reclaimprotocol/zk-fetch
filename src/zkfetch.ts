@@ -95,6 +95,7 @@ export class ReclaimClient {
           sessionId: this.sessionId,
           logType: LogType.PROOF_GENERATED,
           applicationId: this.applicationId,
+          appBackendUrl: this.appBackendUrl || APP_BACKEND_URL,
         });
         return transformProof(claim);
       } catch (error) {
@@ -104,6 +105,7 @@ export class ReclaimClient {
             sessionId: this.sessionId,
             logType: LogType.ERROR,
             applicationId: this.applicationId,
+            appBackendUrl: this.appBackendUrl || APP_BACKEND_URL,
           });
           logger.error(error);
           throw error;

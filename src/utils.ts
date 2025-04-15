@@ -107,7 +107,7 @@ export async function fetchAppById(appId: string, appBackendUrl: string): Promis
     }
 
     const res = await response.json();
-    const appName = res.application.applicationName;
+    const appName = res.application.applicationName || res.application.name;
     appNameCache[appId] = appName; // Update cache
     return appName;
   } catch (err) {
