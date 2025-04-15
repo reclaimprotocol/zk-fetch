@@ -10,7 +10,7 @@ import {
 } from "./utils";
 import { v4 } from "uuid";
 import P from "pino";
-import { ATTESTOR_NODE_URL } from "./constants";
+import { APP_BACKEND_URL, ATTESTOR_NODE_URL } from "./constants";
 const logger = P();
 
 export class ReclaimClient {
@@ -18,15 +18,18 @@ export class ReclaimClient {
   applicationSecret: string;
   logs?: boolean;
   sessionId: string;
+  appBackendUrl?: string;
   constructor(
     applicationId: string,
     applicationSecret: string,
-    logs?: boolean
+    logs?: boolean,
+    appBackendUrl?: string
   ) {
     validateApplicationIdAndSecret(applicationId, applicationSecret);
     this.applicationId = applicationId;
     this.applicationSecret = applicationSecret;
     this.sessionId = v4().toString();
+    this.appBackendUrl = appBackendUrl || APP_BACKEND_URL;
     // if the logs are enabled, set the logger level to info
     logger.level = logs ? "info" : "silent";
     logger.info(
@@ -49,6 +52,7 @@ export class ReclaimClient {
       sessionId: this.sessionId,
       logType: LogType.VERIFICATION_STARTED,
       applicationId: this.applicationId,
+      appBackendUrl: this.appBackendUrl || APP_BACKEND_URL,
     });
 
     let attempt = 0;
