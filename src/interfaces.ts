@@ -1,12 +1,12 @@
 import { LogType } from "./types";
 
 export interface Options {
-    method: string
-    body?: string;
-    headers?: { [key: string]: string };
-    geoLocation?: string;
-    paramValues?: { [key: string]: string };
-    context?: { contextAddress: string, contextMessage: string };
+  method: string
+  body?: string;
+  headers?: { [key: string]: string };
+  geoLocation?: string;
+  paramValues?: { [key: string]: string };
+  context?: { contextAddress: string, contextMessage: string };
 }
 
 export interface secretOptions {
@@ -18,9 +18,10 @@ export interface secretOptions {
 }
 
 export interface SendLogsParams {
-    sessionId: string;
-    logType: LogType;
-    applicationId: string;
+  sessionId: string;
+  logType: LogType;
+  applicationId: string;
+  appBackendUrl?: string;
 }
 
 
