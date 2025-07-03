@@ -1,3 +1,5 @@
+import { ClaimTunnelResponse } from "@reclaimprotocol/attestor-core/lib/proto/api";
+
 export enum HttpMethod {
     GET = "GET",
     POST = "POST",
@@ -16,6 +18,11 @@ export type ProofRequestOptions = {
     log?: boolean;
     sessionId?: string;
 }  
+
+export type MechainResponse = {
+    taskId: number;
+    responses: ClaimTunnelResponse[];
+}
 
 export type ApplicationId = string;
 export type ApplicationSecret = string;
