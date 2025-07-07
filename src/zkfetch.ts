@@ -1,6 +1,9 @@
-import { createClaimOnAttestor } from "@reclaimprotocol/attestor-core";
-import { HttpMethod, LogType } from "./types";
-import { Options, secretOptions } from "./interfaces";
+import {
+  createClaimOnAttestor,
+  createClaimOnMechain,
+} from "@reclaimprotocol/attestor-core";
+import { HttpMethod, LogType, MechainResponse } from "./types";
+import { Options, Proof, secretOptions } from "./interfaces";
 import {
   assertCorrectnessOfOptions,
   validateURL,
@@ -11,6 +14,7 @@ import {
 import { v4 } from "uuid";
 import P from "pino";
 import { ATTESTOR_NODE_URL } from "./constants";
+import { ClaimTunnelResponse } from "@reclaimprotocol/attestor-core/lib/proto/api";
 const logger = P();
 
 export class ReclaimClient {
@@ -38,6 +42,7 @@ export class ReclaimClient {
     url: string,
     options?: Options,
     secretOptions?: secretOptions,
+    isDecentralised?: boolean,
     retries = 1,
     retryInterval = 1000
   ) {
@@ -54,45 +59,89 @@ export class ReclaimClient {
     let attempt = 0;
     while (attempt < retries) {
       try {
-        const claim = await createClaimOnAttestor({
-          name: "http",
-          params: {
-            method: options?.method as HttpMethod || HttpMethod.GET,
-            url: url,
-            responseMatches: secretOptions?.responseMatches || [
-              {
-                type: "regex",
-                value: "(?<data>.*)",
-              },
-            ],
-            headers: options?.headers,
-            geoLocation: options?.geoLocation,
-            responseRedactions: secretOptions?.responseRedactions || [],
-            body: options?.body || "",
-            paramValues: options?.paramValues,
-          },
-          context: options?.context,
-          secretParams: {
-            cookieStr: secretOptions?.cookieStr || "",
-            headers: secretOptions?.headers || {},
-            paramValues: secretOptions?.paramValues,
-          },
-          ownerPrivateKey: this.applicationSecret,
-          logger: logger,
-          client: {
-            url: ATTESTOR_NODE_URL,
-          },
-        });
-        if (claim.error) {
-          throw new Error(`Failed to create claim on attestor: ${claim.error.message}`);
-        }
+        let claim: ClaimTunnelResponse | MechainResponse;
+        if (isDecentralised) {
+          claim = await createClaimOnMechain({
+            name: "http",
+            params: {
+              method: (options?.method as HttpMethod) || HttpMethod.GET,
+              url: url,
+              responseMatches: secretOptions?.responseMatches || [
+                {
+                  type: "regex",
+                  value: "(?<data>.*)",
+                },
+              ],
+              headers: options?.headers,
+              geoLocation: options?.geoLocation,
+              responseRedactions: secretOptions?.responseRedactions || [],
+              body: options?.body || "",
+              paramValues: options?.paramValues,
+            },
+            context: options?.context,
+            secretParams: {
+              cookieStr: secretOptions?.cookieStr || "",
+              headers: secretOptions?.headers || {},
+              paramValues: secretOptions?.paramValues,
+            },
+            ownerPrivateKey: this.applicationSecret,
+            logger: logger,
+            client: {
+              url: ATTESTOR_NODE_URL,
+            },
+          });
 
-        await sendLogs({
-          sessionId: this.sessionId,
-          logType: LogType.PROOF_GENERATED,
-          applicationId: this.applicationId,
-        });
-        return transformProof(claim);
+          await sendLogs({
+            sessionId: this.sessionId,
+            logType: LogType.PROOF_GENERATED,
+            applicationId: this.applicationId,
+          });
+
+          return claim.responses.map(transformProof);
+        } else {
+          claim = await createClaimOnAttestor({
+            name: "http",
+            params: {
+              method: (options?.method as HttpMethod) || HttpMethod.GET,
+              url: url,
+              responseMatches: secretOptions?.responseMatches || [
+                {
+                  type: "regex",
+                  value: "(?<data>.*)",
+                },
+              ],
+              headers: options?.headers,
+              geoLocation: options?.geoLocation,
+              responseRedactions: secretOptions?.responseRedactions || [],
+              body: options?.body || "",
+              paramValues: options?.paramValues,
+            },
+            context: options?.context,
+            secretParams: {
+              cookieStr: secretOptions?.cookieStr || "",
+              headers: secretOptions?.headers || {},
+              paramValues: secretOptions?.paramValues,
+            },
+            ownerPrivateKey: this.applicationSecret,
+            logger: logger,
+            client: {
+              url: ATTESTOR_NODE_URL,
+            },
+          });
+
+          if (claim.error) {
+            throw new Error(
+              `Failed to create claim on attestor: ${claim.error.message}`
+            );
+          }
+
+          await sendLogs({
+            sessionId: this.sessionId,
+            logType: LogType.PROOF_GENERATED,
+            applicationId: this.applicationId,
+          });
+          return transformProof(claim);
+        }
       } catch (error) {
         attempt++;
         if (attempt >= retries) {
