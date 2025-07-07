@@ -42,7 +42,7 @@ export class ReclaimClient {
     url: string,
     options?: Options,
     secretOptions?: secretOptions,
-    decentralised?: boolean,
+    isDecentralised?: boolean,
     retries = 1,
     retryInterval = 1000
   ) {
@@ -60,7 +60,7 @@ export class ReclaimClient {
     while (attempt < retries) {
       try {
         let claim: ClaimTunnelResponse | MechainResponse;
-        if (decentralised) {
+        if (isDecentralised) {
           claim = await createClaimOnMechain({
             name: "http",
             params: {
