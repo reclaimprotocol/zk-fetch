@@ -321,6 +321,22 @@ Note: The geoLocation should be a two-letter ISO country code, for example, 'US'
 
 ```
 
+### Decentralised zkFetch
+
+By default, the `ReclaimClient.zkfetch()` responds with one proof returned from a Reclaim attestor. However, there is an option to retrieve multiple proofs in a decentralised manner. The process relies on Smart Contracts and is a part of Reclaim's decentralisation plan.
+
+To incur this behavior, it is sufficient to pass the `isDecentralised` flag as `True`:
+
+```
+async zkFetch(
+    ...
+    isDecentralised?: boolean,
+    ...
+  ){
+    ...
+  }
+```
+
 ## More examples
 
 you can find more examples/starter packs here 
