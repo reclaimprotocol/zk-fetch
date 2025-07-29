@@ -110,7 +110,7 @@ export async function fetchAppById(appId: string): Promise<string> {
     }
 
     const res = await response.json();
-    const appName = res.application.applicationName;
+    const appName = res.application.name;
     appNameCache[appId] = appName; // Update cache
     return appName;
   } catch (err) {
