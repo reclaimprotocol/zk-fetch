@@ -85,7 +85,13 @@ function getFileSize(filePath, commitHash, url = null) {
  * call progressCallback(delta) where delta is the number of bytes just received.
  * Follows redirects if necessary.
  */
-async function downloadFile(filePath, targetPath, progressCallback, commitHash, url = null, retries = 3) {
+async function downloadFile(filePath, targetPath, progressCallback, commitHash, url = null, retries = 3, redirectCount = 0) {
+  const MAX_REDIRECTS = 10;
+  
+  if (redirectCount >= MAX_REDIRECTS) {
+    throw new Error(`Too many redirects (${redirectCount}) for ${filePath}`);
+  }
+  
   if (!url) {
     url = `https://github.com/${REPO}/raw/${commitHash}/resources/${filePath}`;
   }
@@ -98,8 +104,8 @@ async function downloadFile(filePath, targetPath, progressCallback, commitHash, 
         const file = fs.createWriteStream(targetPath);
         const request = https.get(url, (response) => {
           if ([301, 302].includes(response.statusCode) && response.headers.location) {
-            // Follow redirect
-            return downloadFile(filePath, targetPath, progressCallback, commitHash, response.headers.location)
+            // Follow redirect with incremented count
+            return downloadFile(filePath, targetPath, progressCallback, commitHash, response.headers.location, retries, redirectCount + 1)
               .then(resolve)
               .catch(reject);
           }
@@ -288,7 +294,22 @@ async function main() {
     for (const dir of TARGET_DIRS) {
       // Create parent directory if it doesn't exist
       await fs.promises.mkdir(path.dirname(dir), { recursive: true });
-      await fs.promises.rm(dir, { recursive: true, force: true });
+      
+      // Only remove specific files/subdirectories that correspond to downloaded content
+      const tempContents = await fs.promises.readdir(TEMP_DIR, { recursive: true });
+      for (const item of tempContents) {
+        const targetPath = path.join(dir, item);
+        try {
+          const stat = await fs.promises.stat(targetPath);
+          if (stat.isDirectory()) {
+            await fs.promises.rm(targetPath, { recursive: true, force: true });
+          } else {
+            await fs.promises.unlink(targetPath);
+          }
+        } catch (error) {
+          // File doesn't exist, which is fine
+        }
+      }
       
       // Copy the temp directory contents to the target directory
       await fs.promises.cp(TEMP_DIR, dir, { recursive: true });
@@ -303,7 +324,11 @@ async function main() {
     process.stdout.write('\x1B[?25h\n'); // Ensure the cursor is restored
     console.error('\nFatal error during download:', error);
     // Clean up temp directory on error
-    await fs.promises.rm(TEMP_DIR, { recursive: true, force: true });
+    try {
+      await fs.promises.rm(TEMP_DIR, { recursive: true, force: true });
+    } catch (cleanupError) {
+      console.error('Warning: Failed to clean up temp directory:', cleanupError.message);
+    }
     process.exit(1);
   }
 }
