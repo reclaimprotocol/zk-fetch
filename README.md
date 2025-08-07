@@ -21,7 +21,7 @@ Key features:
 npm install @reclaimprotocol/zk-fetch
 
 # Download required ZK proof files
-node node_modules/@reclaimprotocol/zk-symmetric-crypto/lib/scripts/download-files
+node node_modules/@reclaimprotocol/zk-fetch/scripts/download-files
 ```
 
 ## Prerequisites
