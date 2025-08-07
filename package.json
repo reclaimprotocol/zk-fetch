@@ -34,7 +34,7 @@
     "@types/uuid": "^9.0.8",
     "tsup": "^8.1.0",
     "typescript": "^5.4.5",
-    "vitest": "^2.0.3"
+    "vitest": "^3.2.4"
   },
   "directories": {
     "test": "tests"
