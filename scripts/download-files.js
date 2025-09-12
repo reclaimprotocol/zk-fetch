@@ -1,341 +1,540 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const os = require('os');
 
-const REPO = "reclaimprotocol/zk-symmetric-crypto";
-// Handles both possible node_modules layouts for zk-symmetric-crypto/resources
+// Configuration
+const CONFIG = {
+  REPO: 'reclaimprotocol/zk-symmetric-crypto',
+  MAX_REDIRECTS: 10,
+  MAX_RETRIES: 3,
+  REQUEST_TIMEOUT_MS: 30000,
+  HEAD_REQUEST_TIMEOUT_MS: 10000,
+  GITHUB_API_TIMEOUT_MS: 10000,
+  EXPONENTIAL_BACKOFF_BASE: 2,
+  USER_AGENT: 'zk-fetch-downloader/1.0'
+};
+
+// Resource definitions
+const RESOURCES = {
+  ciphers: ['chacha20', 'aes-256-ctr', 'aes-128-ctr'],
+  files: ['circuit_final.zkey', 'circuit.wasm', 'circuit.r1cs']
+};
+
+// Target directories - handles different node_modules layouts
+// Use path.resolve for cross-platform absolute paths
 const TARGET_DIRS = [
-    path.join(
-        process.cwd(),
-        "node_modules",
-        "@reclaimprotocol",
-        "attestor-core",
-        "node_modules",
-        "@reclaimprotocol",
-        "zk-symmetric-crypto",
-        "resources"
-    ),
-    path.join(
-        process.cwd(),
-        "node_modules",
-        "@reclaimprotocol",
-        "zk-symmetric-crypto",
-        "resources"
-    )
+  path.resolve(
+    process.cwd(),
+    'node_modules',
+    '@reclaimprotocol',
+    'attestor-core',
+    'node_modules',
+    '@reclaimprotocol',
+    'zk-symmetric-crypto',
+    'resources'
+  ),
+  path.resolve(
+    process.cwd(),
+    'node_modules',
+    '@reclaimprotocol',
+    'zk-symmetric-crypto',
+    'resources'
+  )
 ];
-const TEMP_DIR = path.join(process.cwd(), "zk-resources");
+
+// Use OS temp directory for better cross-platform support
+const TEMP_DIR = path.join(os.tmpdir(), 'zk-resources-temp-' + Date.now());
 
 /**
- * Fetch the latest commit hash from the GitHub repository.
+ * Logger utility for consistent output formatting
  */
-function getLatestCommitHash() {
-  return new Promise((resolve, reject) => {
-    const url = `https://api.github.com/repos/${REPO}/commits/HEAD`;
-    const req = https.get(url, {
-      headers: {
-        'User-Agent': 'Node.js'
-      }
-    }, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(data);
-          if (json.sha) {
-            resolve(json.sha);
-          } else {
-            reject(new Error('No SHA found in GitHub API response'));
-          }
-        } catch (error) {
-          reject(new Error(`Failed to parse GitHub API response: ${error.message}`));
-        }
-      });
-    });
-    req.on('error', reject);
-    req.setTimeout(10000, () => {
-      req.destroy();
-      reject(new Error('Timeout fetching latest commit hash'));
-    });
-  });
-}
+class Logger {
+  static info(message) {
+    console.log(`[INFO] ${new Date().toISOString()} - ${message}`);
+  }
 
-/**
- * Perform a HEAD request to fetch the file's content-length.
- * Follows redirects if necessary.
- */
-function getFileSize(filePath, commitHash, url = null) {
-  if (!url) {
-    url = `https://github.com/${REPO}/raw/${commitHash}/resources/${filePath}`;
+  static error(message, error = null) {
+    console.error(`[ERROR] ${new Date().toISOString()} - ${message}`);
+    if (error && error.stack) {
+      console.error(`[STACK] ${error.stack}`);
+    }
   }
-  return new Promise((resolve, reject) => {
-    const req = https.request(url, { method: 'HEAD' }, (res) => {
-      if ([301, 302].includes(res.statusCode) && res.headers.location) {
-        return resolve(getFileSize(filePath, commitHash, res.headers.location));
-      }
-      const size = parseInt(res.headers['content-length'], 10);
-      resolve(isNaN(size) ? 0 : size);
-    });
-    req.on('error', reject);
-    req.end();
-  });
-}
 
-/**
- * Download a file from GitHub with retries. On every received chunk,
- * call progressCallback(delta) where delta is the number of bytes just received.
- * Follows redirects if necessary.
- */
-async function downloadFile(filePath, targetPath, progressCallback, commitHash, url = null, retries = 3, redirectCount = 0) {
-  const MAX_REDIRECTS = 10;
-  
-  if (redirectCount >= MAX_REDIRECTS) {
-    throw new Error(`Too many redirects (${redirectCount}) for ${filePath}`);
-  }
-  
-  if (!url) {
-    url = `https://github.com/${REPO}/raw/${commitHash}/resources/${filePath}`;
-  }
-  const dir = path.dirname(targetPath);
-  await fs.promises.mkdir(dir, { recursive: true });
-  
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    try {
-      return await new Promise((resolve, reject) => {
-        const file = fs.createWriteStream(targetPath);
-        const request = https.get(url, (response) => {
-          if ([301, 302].includes(response.statusCode) && response.headers.location) {
-            // Follow redirect with incremented count
-            return downloadFile(filePath, targetPath, progressCallback, commitHash, response.headers.location, retries, redirectCount + 1)
-              .then(resolve)
-              .catch(reject);
-          }
-          response.on('data', (chunk) => {
-            progressCallback(chunk.length);
-          });
-          response.pipe(file);
-          file.on('finish', () => {
-            file.close(resolve);
-          });
-        });
+  static progress(message) {
+    // Cross-platform progress output
+    const isWindows = process.platform === 'win32';
+    const supportsAnsi = process.stdout.isTTY && !isWindows;
     
-        request.on('error', (err) => {
+    if (supportsAnsi) {
+      // Unix-like systems with TTY support
+      process.stdout.write(`\r\x1B[K${message}`);
+    } else {
+      // Windows or non-TTY environments
+      const clearLine = ' '.repeat(process.stdout.columns || 100);
+      process.stdout.write('\r' + clearLine + '\r' + message);
+    }
+  }
+}
+
+/**
+ * HTTP utility for making requests with proper error handling
+ */
+class HttpClient {
+  static request(url, options = {}) {
+    return new Promise((resolve, reject) => {
+      const timeout = options.timeout || CONFIG.REQUEST_TIMEOUT_MS;
+      const method = options.method || 'GET';
+      
+      const req = https.request(url, { 
+        method,
+        headers: {
+          'User-Agent': CONFIG.USER_AGENT,
+          ...options.headers
+        }
+      }, (res) => {
+        if (options.followRedirects && [301, 302, 307, 308].includes(res.statusCode) && res.headers.location) {
+          resolve({ redirect: res.headers.location });
+          return;
+        }
+
+        if (method === 'HEAD') {
+          resolve({ headers: res.headers, statusCode: res.statusCode });
+          return;
+        }
+
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          resolve({ data, headers: res.headers, statusCode: res.statusCode });
+        });
+      });
+
+      req.on('error', reject);
+      req.setTimeout(timeout, () => {
+        req.destroy();
+        reject(new Error(`Request timeout after ${timeout}ms`));
+      });
+
+      req.end();
+    });
+  }
+}
+
+/**
+ * GitHub API client
+ */
+class GitHubClient {
+  static async getLatestCommitHash() {
+    const url = `https://api.github.com/repos/${CONFIG.REPO}/commits/HEAD`;
+    
+    try {
+      const response = await HttpClient.request(url, {
+        timeout: CONFIG.GITHUB_API_TIMEOUT_MS
+      });
+      
+      const json = JSON.parse(response.data);
+      if (!json.sha) {
+        throw new Error('Invalid GitHub API response: missing SHA');
+      }
+      
+      return json.sha;
+    } catch (error) {
+      throw new Error(`Failed to fetch commit hash: ${error.message}`);
+    }
+  }
+
+  static getResourceUrl(filePath, commitHash) {
+    return `https://github.com/${CONFIG.REPO}/raw/${commitHash}/resources/${filePath}`;
+  }
+}
+
+/**
+ * File system utilities with async/await
+ */
+class FileSystem {
+  static async ensureDirectory(dirPath) {
+    await fs.promises.mkdir(dirPath, { recursive: true });
+  }
+
+  static async fileExists(filePath) {
+    try {
+      await fs.promises.access(filePath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  static async cleanDirectory(dirPath) {
+    await fs.promises.rm(dirPath, { recursive: true, force: true });
+  }
+
+  static async copyDirectory(source, destination) {
+    await fs.promises.cp(source, destination, { recursive: true });
+  }
+}
+
+/**
+ * Download manager for handling file downloads with retry logic
+ */
+class DownloadManager {
+  constructor(commitHash) {
+    this.commitHash = commitHash;
+    this.totalBytes = 0;
+    this.downloadedBytes = 0;
+    this.startTime = null;
+  }
+
+  async getFileSize(filePath, url = null, redirectCount = 0) {
+    if (redirectCount >= CONFIG.MAX_REDIRECTS) {
+      throw new Error(`Too many redirects for ${filePath}`);
+    }
+
+    if (!url) {
+      url = GitHubClient.getResourceUrl(filePath, this.commitHash);
+    }
+
+    const response = await HttpClient.request(url, {
+      method: 'HEAD',
+      followRedirects: true,
+      timeout: CONFIG.HEAD_REQUEST_TIMEOUT_MS
+    });
+
+    if (response.redirect) {
+      return this.getFileSize(filePath, response.redirect, redirectCount + 1);
+    }
+
+    const size = parseInt(response.headers['content-length'], 10);
+    return isNaN(size) ? 0 : size;
+  }
+
+  async downloadFile(filePath, targetPath, progressCallback, retries = CONFIG.MAX_RETRIES) {
+    const dir = path.dirname(targetPath);
+    await FileSystem.ensureDirectory(dir);
+
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        await this._downloadWithRedirects(filePath, targetPath, progressCallback);
+        return;
+      } catch (error) {
+        if (attempt === retries) {
+          throw new Error(`Failed to download ${filePath} after ${retries} attempts: ${error.message}`);
+        }
+        
+        Logger.info(`Retry ${attempt}/${retries} for ${filePath}: ${error.message}`);
+        const backoffMs = Math.pow(CONFIG.EXPONENTIAL_BACKOFF_BASE, attempt) * 1000;
+        await new Promise(resolve => setTimeout(resolve, backoffMs));
+      }
+    }
+  }
+
+  async _downloadWithRedirects(filePath, targetPath, progressCallback, url = null, redirectCount = 0) {
+    if (redirectCount >= CONFIG.MAX_REDIRECTS) {
+      throw new Error(`Too many redirects for ${filePath}`);
+    }
+
+    if (!url) {
+      url = GitHubClient.getResourceUrl(filePath, this.commitHash);
+    }
+
+    return new Promise((resolve, reject) => {
+      const file = fs.createWriteStream(targetPath);
+      
+      const request = https.get(url, { 
+        headers: { 'User-Agent': CONFIG.USER_AGENT }
+      }, (response) => {
+        if ([301, 302, 307, 308].includes(response.statusCode) && response.headers.location) {
+          file.close();
+          this._downloadWithRedirects(filePath, targetPath, progressCallback, response.headers.location, redirectCount + 1)
+            .then(resolve)
+            .catch(reject);
+          return;
+        }
+
+        if (response.statusCode !== 200) {
+          file.close();
+          reject(new Error(`HTTP ${response.statusCode} for ${filePath}`));
+          return;
+        }
+
+        response.on('data', (chunk) => {
+          progressCallback(chunk.length);
+        });
+
+        response.pipe(file);
+
+        file.on('finish', () => {
+          file.close(() => resolve());
+        });
+
+        file.on('error', (err) => {
           fs.unlink(targetPath, () => reject(err));
         });
-    
-        request.setTimeout(30000, () => {
-          request.destroy();
-          reject(new Error(`Timeout downloading ${filePath}`));
-        });
       });
-    } catch (error) {
-      if (attempt === retries) {
-        throw new Error(`Failed to download ${filePath} after ${retries} attempts: ${error.message}`);
+
+      request.on('error', (err) => {
+        file.close();
+        fs.unlink(targetPath, () => reject(err));
+      });
+
+      request.setTimeout(CONFIG.REQUEST_TIMEOUT_MS, () => {
+        request.destroy();
+        reject(new Error(`Timeout downloading ${filePath}`));
+      });
+    });
+  }
+}
+
+/**
+ * Progress reporter for download tracking
+ */
+class ProgressReporter {
+  static formatBytes(bytes) {
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let unitIndex = 0;
+    let value = bytes;
+    
+    while (value >= 1024 && unitIndex < units.length - 1) {
+      value /= 1024;
+      unitIndex++;
+    }
+    
+    return `${value.toFixed(1)} ${units[unitIndex]}`;
+  }
+
+  static formatTime(seconds) {
+    if (!isFinite(seconds) || seconds < 0) return '--';
+    
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.round(seconds % 60);
+    
+    if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    } else if (minutes > 0) {
+      return `${minutes}m ${secs}s`;
+    } else {
+      return `${secs}s`;
+    }
+  }
+
+  static renderProgress(completed, total, downloaded, totalSize, speed, currentFile) {
+    const progress = totalSize > 0 ? Math.min(downloaded / totalSize, 1) : 0;
+    const percentage = (progress * 100).toFixed(1);
+    const remaining = speed > 0 ? (totalSize - downloaded) / speed : 0;
+    
+    const barLength = 30;
+    const filled = Math.round(progress * barLength);
+    // Use cross-platform characters for progress bar
+    const isWindows = process.platform === 'win32';
+    const supportsUnicode = !isWindows && process.stdout.isTTY;
+    const fillChar = supportsUnicode ? '█' : '#';
+    const emptyChar = supportsUnicode ? '░' : '-';
+    const bar = fillChar.repeat(filled) + emptyChar.repeat(barLength - filled);
+    
+    return `[${completed}/${total}] ${percentage}% [${bar}] ` +
+           `${ProgressReporter.formatBytes(speed)}/s | ` +
+           `ETA: ${ProgressReporter.formatTime(remaining)} | ` +
+           `${currentFile}`;
+  }
+}
+
+/**
+ * Main application orchestrator
+ */
+class ZkResourceDownloader {
+  async run() {
+    try {
+      await this.initialize();
+      
+      if (await this.checkExistingFiles()) {
+        Logger.info('ZK circuit files already exist. Skipping download.');
+        process.exit(0);
       }
-      console.log(`\nRetry ${attempt}/${retries} for ${filePath}: ${error.message}`);
-      // Exponential backoff: wait 2^attempt seconds before retrying
-      await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
-    }
-  }
-}
 
-/**
- * Format bytes into a human–readable string.
- */
-function formatBytes(n) {
-  const units = ['B', 'KB', 'MB', 'GB'];
-  let i = 0;
-  while (n >= 1024 && i < units.length - 1) {
-    n /= 1024;
-    i++;
-  }
-  return `${n.toFixed(1)} ${units[i]}`;
-}
-
-/**
- * Render the progress string. We compute:
- * - overall progress = globalDownloaded / globalTotal
- * - speed = globalDownloaded / elapsed time
- * - ETA = remaining bytes / speed
- * Also show the number of files finished.
- */
-function renderProgress(completedFiles, totalFiles, globalDownloaded, globalTotal, speed, currentFileName) {
-  const progress = Math.min(globalTotal > 0 ? globalDownloaded / globalTotal : 0, 1);
-  const barLength = 25;
-  const filled = Math.round(progress * barLength);
-  const unfilled = Math.max(0, barLength - filled);
-  const bar = '█'.repeat(filled) + '░'.repeat(unfilled);
-  const remaining = speed > 0 ? Math.max(0, globalTotal - globalDownloaded) / speed : 0;
-  
-  const percentage = (progress * 100).toFixed(1).padStart(5);
-  const spdStr = `${formatBytes(speed)}/s`;
-  const etaStr = isFinite(remaining) ? `${Math.round(remaining)}s`.padStart(4) : '--';
-  
-  
-  return `[${completedFiles.toString().padStart(2)}/${totalFiles}] ${percentage}% [${bar}] Speed: ${spdStr} Time Left: ${etaStr} | ${currentFileName}`;
-}
-
-async function main() {
-  try {
-    // Fetch the latest commit hash
-    console.log('🔄 Fetching latest commit hash...');
-    const COMMIT_HASH = await getLatestCommitHash();
-    console.log(`📝 Using commit: ${COMMIT_HASH}`);
-
-    // Create each directory in TARGET_DIRS if it doesn't exist
-    for (const dir of TARGET_DIRS) {
-      await fs.promises.mkdir(dir, { recursive: true });
-    }
-
-    // Check if files already exist in the target directory
-    const ciphers = ['chacha20', 'aes-256-ctr', 'aes-128-ctr'];
-    const files = ['circuit_final.zkey', 'circuit.wasm', 'circuit.r1cs'];
-
-    const allFiles = [
-      ...ciphers.flatMap(c => files.map(f => `snarkjs/${c}/${f}`)),
-    ];
-
-    // Check if all files exist
-    const allFilesExist = await Promise.all(
-      allFiles.map(async (file) => {
-        try {
-          // Support checking in all TARGET_DIRS for the file (fix for arrays)
-          let found = false;
-          for (const dir of TARGET_DIRS) {
-            try {
-              await fs.promises.access(path.join(dir, file));
-              found = true;
-              break;
-            } catch {}
-          }
-          if (!found) throw new Error(`File not found: ${file}`);
-          return true;
-        } catch {
-          return false;
-        }
-      })
-    ).then(results => results.every(exists => exists));
-
-    if (allFilesExist) {
-      console.log('ZK files already exist in target directory, skipping download.');
+      await this.downloadResources();
+      await this.deployResources();
+      await this.cleanup();
+      
+      Logger.info('ZK circuit files ready.');
       process.exit(0);
-      return;
+    } catch (error) {
+      await this.handleError(error);
     }
+  }
 
-    // Create and clean temp directory
-    await fs.promises.rm(TEMP_DIR, { recursive: true, force: true });
-    await fs.promises.mkdir(TEMP_DIR, { recursive: true });
+  async initialize() {
+    Logger.info('Initializing ZK resource downloader...');
+    
+    this.commitHash = await GitHubClient.getLatestCommitHash();
+    Logger.info(`Using commit: ${this.commitHash}`);
+    
+    this.allFiles = RESOURCES.ciphers.flatMap(cipher => 
+      RESOURCES.files.map(file => `snarkjs/${cipher}/${file}`)
+    );
+    
+    for (const dir of TARGET_DIRS) {
+      await FileSystem.ensureDirectory(dir);
+    }
+  }
 
-    console.log('📦 Downloading ZK files ');
+  async checkExistingFiles() {
+    Logger.info('Checking for existing files...');
+    
+    for (const file of this.allFiles) {
+      let found = false;
+      for (const dir of TARGET_DIRS) {
+        if (await FileSystem.fileExists(path.join(dir, file))) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        Logger.info(`Missing file: ${file}`);
+        return false;
+      }
+    }
+    
+    return true;
+  }
 
-    const totalFiles = allFiles.length;
-  
-    // Pre-fetch each file's size so that we can compute overall progress
-    console.log('🔍 Fetching file information... please wait');
-    let fileSizes = {};
-    let globalTotalBytes = 0;
-    for (const filePath of allFiles) {
+  async downloadResources() {
+    Logger.info('Preparing download environment...');
+    
+    await FileSystem.cleanDirectory(TEMP_DIR);
+    await FileSystem.ensureDirectory(TEMP_DIR);
+    
+    const downloader = new DownloadManager(this.commitHash);
+    
+    Logger.info('Fetching file metadata...');
+    const fileSizes = {};
+    let totalSize = 0;
+    
+    for (const filePath of this.allFiles) {
       try {
-        const size = await getFileSize(filePath, COMMIT_HASH);
+        const size = await downloader.getFileSize(filePath);
         fileSizes[filePath] = size;
-        globalTotalBytes += size;
-      } catch (err) {
+        totalSize += size;
+      } catch (error) {
+        Logger.error(`Failed to get size for ${filePath}: ${error.message}`);
         fileSizes[filePath] = 0;
       }
     }
-  
+    
+    Logger.info(`Total download size: ${ProgressReporter.formatBytes(totalSize)}`);
+    Logger.info('Downloading files...');
+    
     let completedFiles = 0;
-    let globalDownloadedBytes = 0;
+    let downloadedBytes = 0;
     const startTime = Date.now();
-  
-    process.stdout.write('\x1B[?25l'); // Hide cursor
-  
-    // Download files sequentially to temp directory
-    for (const filePath of allFiles) {
+    
+    // Hide cursor (cross-platform)
+    const supportsAnsi = process.stdout.isTTY && process.platform !== 'win32';
+    if (supportsAnsi) {
+      process.stdout.write('\x1B[?25l');
+    }
+    
+    for (const filePath of this.allFiles) {
       const targetPath = path.join(TEMP_DIR, filePath);
-      let currentFileDownloaded = 0;
-  
-      await downloadFile(filePath, targetPath, (delta) => {
-        currentFileDownloaded += delta;
-        globalDownloadedBytes += delta;
-  
+      
+      await downloader.downloadFile(filePath, targetPath, (delta) => {
+        downloadedBytes += delta;
         const elapsed = (Date.now() - startTime) / 1000;
-        const speed = elapsed > 0 ? globalDownloadedBytes / elapsed : 0;
-  
-        const progressStr = renderProgress(
+        const speed = elapsed > 0 ? downloadedBytes / elapsed : 0;
+        
+        Logger.progress(ProgressReporter.renderProgress(
           completedFiles,
-          totalFiles,
-          globalDownloadedBytes,
-          globalTotalBytes,
+          this.allFiles.length,
+          downloadedBytes,
+          totalSize,
           speed,
           path.basename(filePath)
-        );
-        process.stdout.write('\r\x1B[K' + progressStr);
-      }, COMMIT_HASH);
+        ));
+      });
+      
       completedFiles++;
-  
-      // After finishing the file, update the progress one last time.
-      const elapsed = (Date.now() - startTime) / 1000;
-      const speed = elapsed > 0 ? globalDownloadedBytes / elapsed : 0;
-      const progressStr = renderProgress(
-        completedFiles,
-        totalFiles,
-        globalDownloadedBytes,
-        globalTotalBytes,
-        speed,
-        path.basename(filePath)
-      );
-      process.stdout.write('\r\x1B[K' + progressStr);
     }
-  
-    process.stdout.write('\x1B[?25h\n'); // Show cursor
-    console.log('\nMoving files to final location...');
+    
+    // Show cursor (cross-platform)
+    if (supportsAnsi) {
+      process.stdout.write('\x1B[?25h');
+    }
+    process.stdout.write('\n');
+    Logger.info('Downloads completed.');
+  }
 
-    // Copy files from temp to final location
+  async deployResources() {
+    Logger.info('Moving files to target directories...');
+    
     for (const dir of TARGET_DIRS) {
-      // Create parent directory if it doesn't exist
-      await fs.promises.mkdir(path.dirname(dir), { recursive: true });
-      
-      // Only remove specific files/subdirectories that correspond to downloaded content
-      const tempContents = await fs.promises.readdir(TEMP_DIR, { recursive: true });
-      for (const item of tempContents) {
-        const targetPath = path.join(dir, item);
-        try {
-          const stat = await fs.promises.stat(targetPath);
-          if (stat.isDirectory()) {
-            await fs.promises.rm(targetPath, { recursive: true, force: true });
-          } else {
-            await fs.promises.unlink(targetPath);
+      try {
+        await FileSystem.ensureDirectory(path.dirname(dir));
+        
+        // Clean existing resources
+        const tempContents = await fs.promises.readdir(TEMP_DIR, { recursive: true });
+        for (const item of tempContents) {
+          const targetPath = path.join(dir, item);
+          try {
+            const stat = await fs.promises.stat(targetPath);
+            if (stat.isDirectory()) {
+              await FileSystem.cleanDirectory(targetPath);
+            } else {
+              await fs.promises.unlink(targetPath);
+            }
+          } catch {
+            // File doesn't exist, continue
           }
-        } catch (error) {
-          // File doesn't exist, which is fine
         }
+        
+        await FileSystem.copyDirectory(TEMP_DIR, dir);
+        Logger.info(`Files moved to: ${dir}`);
+      } catch (error) {
+        Logger.error(`Failed to deploy to ${dir}: ${error.message}`);
       }
-      
-      // Copy the temp directory contents to the target directory
-      await fs.promises.cp(TEMP_DIR, dir, { recursive: true });
     }
+  }
 
-    // Clean up temp directory
-    await fs.promises.rm(TEMP_DIR, { recursive: true, force: true });
+  async cleanup() {
+    Logger.info('Cleaning up temporary files...');
+    await FileSystem.cleanDirectory(TEMP_DIR);
+  }
 
-    console.log('Download completed successfully!');
-    process.exit(0);
-  } catch (error) {
-    process.stdout.write('\x1B[?25h\n'); // Ensure the cursor is restored
-    console.error('\nFatal error during download:', error);
-    // Clean up temp directory on error
+  async handleError(error) {
+    // Ensure cursor is visible (cross-platform)
+    const supportsAnsiEscape = process.stdout.isTTY && process.platform !== 'win32';
+    if (supportsAnsiEscape) {
+      process.stdout.write('\x1B[?25h');
+    }
+    process.stdout.write('\n');
+    Logger.error('Fatal error occurred', error);
+    
     try {
-      await fs.promises.rm(TEMP_DIR, { recursive: true, force: true });
+      await FileSystem.cleanDirectory(TEMP_DIR);
     } catch (cleanupError) {
-      console.error('Warning: Failed to clean up temp directory:', cleanupError.message);
+      Logger.error('Failed to clean up temporary directory', cleanupError);
     }
+    
     process.exit(1);
   }
 }
-  
+
+// Process error handlers
 process.on('unhandledRejection', (error) => {
-  console.error('Unhandled promise rejection:', error);
+  Logger.error('Unhandled promise rejection', error);
   process.exit(1);
 });
-  
-main();
+
+process.on('uncaughtException', (error) => {
+  Logger.error('Uncaught exception', error);
+  process.exit(1);
+});
+
+// Entry point
+(async () => {
+  const downloader = new ZkResourceDownloader();
+  await downloader.run();
+})().catch(error => {
+  Logger.error('Unexpected error in main', error);
+  process.exit(1);
+});
