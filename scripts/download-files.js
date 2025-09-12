@@ -471,8 +471,23 @@ class ZkResourceDownloader {
       try {
         await FileSystem.ensureDirectory(path.dirname(dir));
         
-        // Clean existing resources
-        const tempContents = await fs.promises.readdir(TEMP_DIR, { recursive: true });
+        // Clean existing resources - using manual recursion for Node.js 18.0+ compatibility
+        async function getAllFiles(dir, basePath = '') {
+          const files = [];
+          const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+          for (const entry of entries) {
+            const relativePath = path.join(basePath, entry.name);
+            if (entry.isDirectory()) {
+              const subFiles = await getAllFiles(path.join(dir, entry.name), relativePath);
+              files.push(...subFiles);
+            } else {
+              files.push(relativePath);
+            }
+          }
+          return files;
+        }
+        
+        const tempContents = await getAllFiles(TEMP_DIR);
         for (const item of tempContents) {
           const targetPath = path.join(dir, item);
           try {
