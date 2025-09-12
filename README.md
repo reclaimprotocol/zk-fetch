@@ -325,8 +325,10 @@ Note: The geoLocation should be a two-letter ISO country code, for example, 'US'
 
 you can find more examples/starter packs here 
 
-- [React Example](https://gitlab.reclaimprotocol.org/starterpacks/reclaim-zkfetch-client)
-- [Express Example](https://gitlab.reclaimprotocol.org/starterpacks/zkfetch-express-example)
+- [React Example](https://github.com/reclaimprotocol/reclaim-zkfetch-client)
+- [Express Example](https://github.com/reclaimprotocol/zkfetch-express-example)
+- [NestJS Example](https://github.com/reclaimprotocol/zkfetch-nestjs-example)
+- [Next.js Example](https://github.com/reclaimprotocol/reclaim-zkfetch-client/tree/feat/nextjs)
 
 ## License 
 This library is governed by an [AGPL](./LICENSE.md) license.
