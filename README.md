@@ -321,28 +321,14 @@ Note: The geoLocation should be a two-letter ISO country code, for example, 'US'
 
 ```
 
-### Decentralised zkFetch
-
-By default, the `ReclaimClient.zkfetch()` responds with one proof returned from a Reclaim attestor. However, there is an option to retrieve multiple proofs in a decentralised manner. The process relies on Smart Contracts and is a part of Reclaim's decentralisation plan.
-
-To incur this behavior, it is sufficient to pass the `isDecentralised` flag as `True`:
-
-```
-async zkFetch(
-    ...
-    isDecentralised?: boolean,
-    ...
-  ){
-    ...
-  }
-```
-
 ## More examples
 
 you can find more examples/starter packs here 
 
-- [React Example](https://gitlab.reclaimprotocol.org/starterpacks/reclaim-zkfetch-client)
-- [Express Example](https://gitlab.reclaimprotocol.org/starterpacks/zkfetch-express-example)
+- [React Example](https://github.com/reclaimprotocol/reclaim-zkfetch-client)
+- [Express Example](https://github.com/reclaimprotocol/zkfetch-express-example)
+- [NestJS Example](https://github.com/reclaimprotocol/zkfetch-nestjs-example)
+- [Next.js Example](https://github.com/reclaimprotocol/reclaim-zkfetch-client/tree/feat/nextjs)
 
 ## License 
 This library is governed by an [AGPL](./LICENSE.md) license.
