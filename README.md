@@ -12,7 +12,6 @@ Key features:
 - Response matching and redaction
 - Built on [Reclaim Protocol](https://reclaimprotocol.org)
 
-**Note:** For optimal proof generation, use zkFetch with relatively stable data that doesn't change frequently (within ~5s).
 
 ## Installation
 
@@ -52,6 +51,85 @@ const proof = await client.zkFetch('https://api.coingecko.com/api/v3/simple/pric
   responseRedactions: [{ regex: 'ethereum":{"usd":(?<price>.*?)}}'}],  
 });
 ```
+
+
+## Authentication Methods
+
+zkFetch supports two authentication modes depending on where you're running the code:
+
+### Backend Mode (Direct Secret)
+
+Use this when running on a secure server (Node.js backend). Your application secret stays safe on the server.
+
+```javascript
+const { ReclaimClient } = require('@reclaimprotocol/zk-fetch');
+
+// Backend only - never expose secret in frontend!
+const client = new ReclaimClient('APPLICATION_ID', 'APPLICATION_SECRET');
+
+const proof = await client.zkFetch('https://api.example.com/data', {
+  method: 'GET'
+});
+```
+
+### Frontend Mode (Signature-Based)
+
+Use this for browsers or untrusted environments. Your application secret never leaves your backend.
+
+**Step 1: Generate signature on your backend**
+
+```javascript
+const { generateSignature } = require('@reclaimprotocol/zk-fetch');
+
+// Backend API endpoint
+app.post('/api/get-signature', async (req, res) => {
+  const signature = await generateSignature({
+    applicationId: process.env.APP_ID,
+    applicationSecret: process.env.APP_SECRET,
+    allowedUrls: [
+      'https://api.coingecko.com/*',                  // Wildcard - all paths under domain
+      'https://api.example.com/public/data',          // Exact URL match
+      '^https://api\\.example\\.com/user/\\d+$'        // Regex pattern
+    ],
+    expiresAt: Math.floor(Date.now() / 1000) + 3600  // Expires in 1 hour (optional)
+  });
+
+  res.json({ signature });
+});
+```
+
+**Step 2: Use signature in your frontend**
+
+```javascript
+const { ReclaimClient } = require('@reclaimprotocol/zk-fetch');
+
+// Fetch signature from your backend
+const response = await fetch('/api/get-signature');
+const { signature } = await response.json();
+
+// Initialize with signature - safe for frontend!
+const client = new ReclaimClient(
+  'APPLICATION_ID',
+  { signature }
+);
+
+// Make requests (only to URLs in allowlist)
+const proof = await client.zkFetch(
+  'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd',
+  { method: 'GET' }
+);
+```
+
+**Signature Features:**
+- Time-limited (default 1 hour, max 72 hours)
+- URL-restricted via allowlist (exact, wildcard, or regex patterns)
+- Cryptographically signed (ECDSA)
+- No secrets exposed to frontend
+
+**URL Pattern Examples:**
+- `'https://api.example.com/data'` - Exact match only
+- `'https://api.example.com/*'` - All paths under domain
+- `'^https://api\\.example\\.com/user/\\d+$'` - Regex pattern for dynamic URLs
 
 
 ## Usage
