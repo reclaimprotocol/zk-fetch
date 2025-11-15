@@ -1,37 +1,96 @@
 import { createClaimOnAttestor } from "@reclaimprotocol/attestor-core";
 import { HttpMethod, LogType } from "./types";
-import { Options, secretOptions } from "./interfaces";
+import { Options, secretOptions, ReclaimClientOptions, SignatureData } from "./interfaces";
 import {
   assertCorrectnessOfOptions,
   validateURL,
   sendLogs,
   validateApplicationIdAndSecret,
   transformProof,
+  getAttestorUrl,
+  isUrlAllowed,
 } from "./utils";
 import { v4 } from "uuid";
 import P from "pino";
-import { ATTESTOR_NODE_URL } from "./constants";
+import { verifySignature } from "./signature";
+import { InvalidParamError } from "./errors";
 const logger = P();
 
 export class ReclaimClient {
   applicationId: string;
-  applicationSecret: string;
+  applicationSecret?: string;
+  signatureData?: SignatureData;
   logs?: boolean;
   sessionId: string;
+
+  /**
+   * Creates a new ReclaimClient instance
+   * @param applicationId - Your Reclaim application ID
+   * @param options - Configuration options (signature or applicationSecret)
+   */
+  constructor(applicationId: string, options: ReclaimClientOptions);
+  constructor(applicationId: string, applicationSecret: string, logs?: boolean);
   constructor(
     applicationId: string,
-    applicationSecret: string,
-    logs?: boolean
+    optionsOrSecret: ReclaimClientOptions | string,
+    logsParam?: boolean
   ) {
-    validateApplicationIdAndSecret(applicationId, applicationSecret);
+    let applicationSecret: string | undefined;
+    let signature: string | undefined;
+    let logs: boolean | undefined;
+
+    if (typeof optionsOrSecret === 'string') {
+      // Backward compatible API: constructor(applicationId, applicationSecret, logs?)
+      applicationSecret = optionsOrSecret;
+      logs = logsParam;
+    } else {
+      // New API: constructor(applicationId, options)
+      applicationSecret = optionsOrSecret.applicationSecret;
+      signature = optionsOrSecret.signature;
+      logs = optionsOrSecret.logs;
+    }
+
+    // Validate that exactly one auth method is provided
+    if (applicationSecret && signature) {
+      throw new InvalidParamError('Cannot provide both applicationSecret and signature. Use only one.');
+    }
+
+    if (!applicationSecret && !signature) {
+      throw new InvalidParamError('Must provide either applicationSecret (backend) or signature (frontend).');
+    }
+
+    // Validate applicationId
+    if (!applicationId || typeof applicationId !== 'string') {
+      throw new InvalidParamError('applicationId must be a non-empty string');
+    }
+
     this.applicationId = applicationId;
-    this.applicationSecret = applicationSecret;
     this.sessionId = v4().toString();
-    // if the logs are enabled, set the logger level to info
+    this.logs = logs;
+
+    // Set up logger
     logger.level = logs ? "info" : "silent";
-    logger.info(
-      `Initializing client with applicationId: ${this.applicationId} and sessionId: ${this.sessionId}`
-    );
+
+    if (applicationSecret) {
+      // Backend mode: validate and store secret
+      validateApplicationIdAndSecret(applicationId, applicationSecret);
+      this.applicationSecret = applicationSecret;
+      logger.info(
+        `Initializing client (backend mode) with applicationId: ${this.applicationId} and sessionId: ${this.sessionId}`
+      );
+    } else if (signature) {
+      // Frontend mode: verify and store signature data
+      this.signatureData = verifySignature(signature);
+
+      // Verify the signature's applicationId matches
+      if (this.signatureData.applicationId.toLowerCase() !== applicationId.toLowerCase()) {
+        throw new InvalidParamError('Signature applicationId does not match provided applicationId');
+      }
+
+      logger.info(
+        `Initializing client (frontend mode) with applicationId: ${this.applicationId} and sessionId: ${this.sessionId}`
+      );
+    }
   }
 
   async zkFetch(
@@ -45,11 +104,38 @@ export class ReclaimClient {
     if (options !== undefined) {
       assertCorrectnessOfOptions(options);
     }
+
+    // If using signature mode, verify URL is allowed
+    if (this.signatureData) {
+      if (!isUrlAllowed(url, this.signatureData.allowedUrls)) {
+        throw new InvalidParamError(
+          `URL "${url}" is not allowed by the signature. Allowed patterns: ${this.signatureData.allowedUrls.join(', ')}`
+        );
+      }
+    }
+
+    // Determine which private key to use
+    let privateKey: string;
+    if (this.applicationSecret) {
+      privateKey = this.applicationSecret;
+    } else if (this.signatureData) {
+      // Use the temporary private key from the signature
+      privateKey = this.signatureData.tempPrivateKey;
+      logger.info(
+        `Using temporary key for signature mode. Temp address: ${this.signatureData.tempAddress}`
+      );
+    } else {
+      throw new InvalidParamError('No authentication method available');
+    }
+
     await sendLogs({
       sessionId: this.sessionId,
       logType: LogType.VERIFICATION_STARTED,
       applicationId: this.applicationId,
     });
+
+    // Fetch attestor URL from feature flags
+    const attestorUrl = await getAttestorUrl();
 
     let attempt = 0;
     while (attempt < retries) {
@@ -77,10 +163,10 @@ export class ReclaimClient {
               headers: secretOptions?.headers || {},
               paramValues: secretOptions?.paramValues,
             },
-            ownerPrivateKey: this.applicationSecret,
+            ownerPrivateKey: privateKey,
             logger: logger,
             client: {
-              url: ATTESTOR_NODE_URL,
+              url: attestorUrl,
             },
           });
 
@@ -95,7 +181,7 @@ export class ReclaimClient {
             logType: LogType.PROOF_GENERATED,
             applicationId: this.applicationId,
           });
-        return transformProof(claim);
+        return await transformProof(claim);
       } catch (error) {
         attempt++;
         if (attempt >= retries) {
