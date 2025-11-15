@@ -109,6 +109,11 @@ export function validateApplicationIdAndSecret(applicationId: ApplicationId, app
   }
 }
 
+/* validate that application is registered */
+export async function validateAppRegistration(applicationId: ApplicationId): Promise<void> {
+  await fetchAppById(applicationId);
+}
+
 /* Transform Proof */
 export async function transformProof(proof: ClaimTunnelResponse): Promise<Proof> {
   if (!proof || !proof.claim || !proof.signatures) {

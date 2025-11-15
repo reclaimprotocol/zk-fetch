@@ -1,13 +1,11 @@
 import { ethers } from 'ethers';
 import { InvalidParamError } from './errors';
-import { validateApplicationIdAndSecret, isRegexPattern } from './utils';
+import { validateApplicationIdAndSecret, validateAppRegistration, isRegexPattern } from './utils';
 import { SignatureConfig, SignatureData } from './interfaces';
+import { SIGNATURE_VERSION, DEFAULT_EXPIRY_HOURS, MAX_EXPIRY_HOURS } from './constants';
 
 
 
-const SIGNATURE_VERSION = '1.0'; // Signature version for future compatibility.
-const DEFAULT_EXPIRY_HOURS = 1;
-const MAX_EXPIRY_HOURS = 72;
 
 /**
  * Generates a signed token for frontend use
@@ -20,6 +18,9 @@ export async function generateSignature(config: SignatureConfig): Promise<string
 
   // Validate applicationId and applicationSecret
   validateApplicationIdAndSecret(applicationId, applicationSecret);
+
+  // Validate that the application is registered
+  await validateAppRegistration(applicationId);
 
   // Validate allowedUrls
   if (!Array.isArray(allowedUrls) || allowedUrls.length === 0) {
