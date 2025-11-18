@@ -79,11 +79,11 @@ Use this for browsers or untrusted environments. Your application secret never l
 **Step 1: Generate signature on your backend**
 
 ```javascript
-const { generateSignature } = require('@reclaimprotocol/zk-fetch');
+const { generateSessionSignature } = require('@reclaimprotocol/zk-fetch');
 
 // Backend API endpoint
 app.post('/api/get-signature', async (req, res) => {
-  const signature = await generateSignature({
+  const signature = await generateSessionSignature({
     applicationId: process.env.APP_ID,
     applicationSecret: process.env.APP_SECRET,
     allowedUrls: [

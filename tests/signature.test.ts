@@ -30,7 +30,6 @@ describe('Signature Generation', () => {
     expect(validation.allowedUrls).toBeDefined()
     expect(validation.allowedUrls.length).toBeGreaterThan(0)
     expect(validation.expiresAt).toBeGreaterThan(Date.now() / 1000)
-    expect(validation.tempAddress).toBeDefined()
   }, 10000)
 })
 

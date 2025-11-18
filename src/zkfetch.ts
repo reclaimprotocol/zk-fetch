@@ -9,10 +9,11 @@ import {
   transformProof,
   getAttestorUrl,
   isUrlAllowed,
+  getOrCreateOwnerKey,
 } from "./utils";
 import { v4 } from "uuid";
 import P from "pino";
-import { verifySignature } from "./signature";
+import { verifySessionSignature } from "./signature";
 import { InvalidParamError } from "./errors";
 const logger = P();
 
@@ -20,6 +21,7 @@ export class ReclaimClient {
   applicationId: string;
   applicationSecret?: string;
   signatureData?: SignatureData;
+  ownerKey?: string;
   logs?: boolean;
   sessionId: string;
 
@@ -76,16 +78,19 @@ export class ReclaimClient {
       validateApplicationIdAndSecret(applicationId, applicationSecret);
       this.applicationSecret = applicationSecret;
       logger.info(
-        `Initializing client (backend mode) with applicationId: ${this.applicationId} and sessionId: ${this.sessionId}`
+        `Initializing client with applicationId: ${this.applicationId} and sessionId: ${this.sessionId}`
       );
     } else if (signature) {
       // Frontend mode: verify and store signature data
-      this.signatureData = verifySignature(signature);
+      this.signatureData = verifySessionSignature(signature);
 
       // Verify the signature's applicationId matches
       if (this.signatureData.applicationId.toLowerCase() !== applicationId.toLowerCase()) {
         throw new InvalidParamError('Signature applicationId does not match provided applicationId');
       }
+
+      // Generate or retrieve owner key for frontend use
+      this.ownerKey = getOrCreateOwnerKey(this.applicationId);
 
       logger.info(
         `Initializing client (frontend mode) with applicationId: ${this.applicationId} and sessionId: ${this.sessionId}`
@@ -118,12 +123,9 @@ export class ReclaimClient {
     let privateKey: string;
     if (this.applicationSecret) {
       privateKey = this.applicationSecret;
-    } else if (this.signatureData) {
-      // Use the temporary private key from the signature
-      privateKey = this.signatureData.tempPrivateKey;
-      logger.info(
-        `Using temporary key for signature mode. Temp address: ${this.signatureData.tempAddress}`
-      );
+    } else if (this.ownerKey) {
+      // Use the client-generated owner key
+      privateKey = this.ownerKey;
     } else {
       throw new InvalidParamError('No authentication method available');
     }
@@ -132,6 +134,7 @@ export class ReclaimClient {
       sessionId: this.sessionId,
       logType: LogType.VERIFICATION_STARTED,
       applicationId: this.applicationId,
+      signatureId: this.signatureData?.signatureId,
     });
 
     // Fetch attestor URL from feature flags
@@ -180,6 +183,7 @@ export class ReclaimClient {
             sessionId: this.sessionId,
             logType: LogType.PROOF_GENERATED,
             applicationId: this.applicationId,
+            signatureId: this.signatureData?.signatureId,
           });
         return await transformProof(claim);
       } catch (error) {
@@ -189,6 +193,7 @@ export class ReclaimClient {
             sessionId: this.sessionId,
             logType: LogType.ERROR,
             applicationId: this.applicationId,
+            signatureId: this.signatureData?.signatureId,
           });
           logger.error(error);
           throw error;

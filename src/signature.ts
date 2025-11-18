@@ -1,8 +1,10 @@
 import { ethers } from 'ethers';
 import { InvalidParamError } from './errors';
-import { validateApplicationIdAndSecret, validateAppRegistration, isRegexPattern } from './utils';
+import { validateApplicationIdAndSecret, validateAppRegistration, isRegexPattern, sendLogs } from './utils';
 import { SignatureConfig, SignatureData } from './interfaces';
-import { SIGNATURE_VERSION, DEFAULT_EXPIRY_HOURS, MAX_EXPIRY_HOURS } from './constants';
+import { DEFAULT_EXPIRY_HOURS, MAX_EXPIRY_HOURS } from './constants';
+import { LogType } from './types';
+import { v4 } from 'uuid';
 
 
 
@@ -13,7 +15,7 @@ import { SIGNATURE_VERSION, DEFAULT_EXPIRY_HOURS, MAX_EXPIRY_HOURS } from './con
  * @param config - Configuration object
  * @returns Signed token string
  */
-export async function generateSignature(config: SignatureConfig): Promise<string> {
+export async function generateSessionSignature(config: SignatureConfig): Promise<string> {
   const { applicationId, applicationSecret, allowedUrls, expiresAt } = config;
 
   // Validate applicationId and applicationSecret
@@ -65,26 +67,29 @@ export async function generateSignature(config: SignatureConfig): Promise<string
     throw new InvalidParamError(`expiresAt cannot exceed ${MAX_EXPIRY_HOURS} hours from now`);
   }
 
-  // Generate a temporary private key for frontend use
-  const wallet = new ethers.Wallet(applicationSecret);
-  const tempWallet = ethers.Wallet.createRandom();
-  const tempPrivateKey = tempWallet.privateKey;
-  const tempAddress = tempWallet.address;
+  // Generate unique signature ID for tracking
+  const signatureId = v4().toString();
 
-  // Create the payload
+  const wallet = new ethers.Wallet(applicationSecret);
+
   const payload: SignatureData = {
+    signatureId,
     applicationId,
     allowedUrls,
     expiresAt: finalExpiresAt,
-    version: SIGNATURE_VERSION,
-    tempPrivateKey, // same will be used in the attestor ownerKey
-    tempAddress,
   };
 
   // Convert payload to string and sign it
   const payloadString = JSON.stringify(payload);
   const messageHash = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(payloadString));
   const sig = await wallet.signMessage(ethers.utils.arrayify(messageHash));
+
+  // Log signature generation
+  await sendLogs({
+    sessionId: signatureId,
+    logType: LogType.SESSION_TOKEN_GENERATED,
+    applicationId,
+  });
 
   // Encode: base64(payload).signature
   const encodedPayload = Buffer.from(payloadString).toString('base64');
@@ -93,13 +98,13 @@ export async function generateSignature(config: SignatureConfig): Promise<string
 }
 
 /**
- * Verifies and decodes a signature token
+ * Verifies and decodes a session signature token
  *
  * @param signature - The signature token to verify
  * @returns Decoded signature data
  * @throws {InvalidParamError} If signature is invalid or expired
  */
-export function verifySignature(signature: string): SignatureData {
+export function verifySessionSignature(signature: string): SignatureData {
   if (!signature || typeof signature !== 'string') {
     throw new InvalidParamError('signature must be a non-empty string');
   }
@@ -121,19 +126,9 @@ export function verifySignature(signature: string): SignatureData {
   }
 
   // Validate payload structure
-  const requiredFields = ['applicationId', 'allowedUrls', 'expiresAt', 'version', 'tempPrivateKey', 'tempAddress'];
+  const requiredFields = ['signatureId', 'applicationId', 'allowedUrls', 'expiresAt'];
   if (!requiredFields.every(field => payload[field as keyof SignatureData]) || !Array.isArray(payload.allowedUrls)) {
     throw new InvalidParamError('Invalid signature payload structure');
-  }
-
-  // Verify temp address matches temp private key
-  try {
-    const tempWallet = new ethers.Wallet(payload.tempPrivateKey);
-    if (tempWallet.address.toLowerCase() !== payload.tempAddress.toLowerCase()) {
-      throw new Error();
-    }
-  } catch {
-    throw new InvalidParamError('Invalid temporary private key');
   }
 
   // Check expiration

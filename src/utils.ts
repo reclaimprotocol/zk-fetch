@@ -16,6 +16,50 @@ interface FeatureFlag {
 let cachedAttestorUrl: string | null = null;
 
 /**
+ * Gets or creates an owner key (wallet) for the given application ID
+ */
+export function getOrCreateOwnerKey(applicationId: string): string {
+  const storageKey = `reclaim_${applicationId}`;
+
+  // Try localStorage (browser environment)
+  if (typeof localStorage !== 'undefined') {
+    try {
+      const stored = localStorage.getItem(storageKey);
+      if (stored) {
+        // Validate that it's a valid private key
+        try {
+          new ethers.Wallet(stored);
+          logger.info('Using existing owner key');
+          return stored;
+        } catch {
+          // Invalid key, remove it
+          localStorage.removeItem(storageKey);
+        }
+      }
+    } catch (error) {
+      logger.warn('localStorage not accessible, will generate temporary key');
+    }
+  }
+
+  // Create new owner key
+  const ownerWallet = ethers.Wallet.createRandom();
+  const ownerKey = ownerWallet.privateKey;
+
+  // Try to store in localStorage for persistence
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.setItem(storageKey, ownerKey);
+    } catch (error) {
+      logger.warn('Could not store owner key, will be temporary');
+    }
+  } else {
+    logger.info('Created owner key');
+  }
+
+  return ownerKey;
+}
+
+/**
  * Fetches the attestor URL from the feature flag API
  * Falls back to hardcoded constant if API fails
  * Caches the result for subsequent calls
@@ -284,6 +328,7 @@ export async function sendLogs(
     sessionId,
     logType,
     applicationId,
+    signatureId,
   }: SendLogsParams
 ): Promise<void> {
   try {
@@ -295,6 +340,7 @@ export async function sendLogs(
       date: new Date().toISOString(),
       applicationId: applicationId,
       applicationName: getAppName,
+      ...(signatureId && { signatureId }),
     })
     const response = await fetch(url, {
       method: 'POST',

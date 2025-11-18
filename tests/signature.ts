@@ -1,4 +1,4 @@
-import { generateSignature, ReclaimClient, verifySignature } from '../src'
+import { generateSessionSignature, ReclaimClient, verifySessionSignature } from '../src'
 import { isUrlAllowed } from '../src/utils'
 import { InvalidParamError } from '../src/errors'
 import { config } from 'dotenv'
@@ -8,7 +8,7 @@ config()
  * Test helper: Validates signature with expected application ID
  */
 function validateSignatureAPI(signature: string, expectedApplicationId: string) {
-  const signatureData = verifySignature(signature);
+  const signatureData = verifySessionSignature(signature);
 
   if (signatureData.applicationId.toLowerCase() !== expectedApplicationId.toLowerCase()) {
     throw new InvalidParamError(
@@ -20,8 +20,7 @@ function validateSignatureAPI(signature: string, expectedApplicationId: string) 
     valid: true,
     applicationId: signatureData.applicationId,
     allowedUrls: signatureData.allowedUrls,
-    expiresAt: signatureData.expiresAt,
-    tempAddress: signatureData.tempAddress,
+    expiresAt: signatureData.expiresAt
   };
 }
 
@@ -29,7 +28,7 @@ function validateSignatureAPI(signature: string, expectedApplicationId: string) 
  * Helper: Generate a test signature with URL whitelist
  */
 export const generateTestSignature = async () => {
-  const signature = await generateSignature({
+  const signature = await generateSessionSignature({
     applicationId: process.env.APP_ID!,
     applicationSecret: process.env.APP_SECRET!,
     allowedUrls: [
