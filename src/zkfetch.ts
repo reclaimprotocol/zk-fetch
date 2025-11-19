@@ -34,22 +34,22 @@ export class ReclaimClient {
   constructor(applicationId: string, applicationSecret: string, logs?: boolean);
   constructor(
     applicationId: string,
-    optionsOrSecret: ReclaimClientOptions | string,
-    logsParam?: boolean
+    optionsOrApplicationSecret: ReclaimClientOptions | string,
+    enableLogs?: boolean
   ) {
     let applicationSecret: string | undefined;
     let signature: string | undefined;
     let logs: boolean | undefined;
 
-    if (typeof optionsOrSecret === 'string') {
+    if (typeof optionsOrApplicationSecret === 'string') {
       // Backward compatible API: constructor(applicationId, applicationSecret, logs?)
-      applicationSecret = optionsOrSecret;
-      logs = logsParam;
+      applicationSecret = optionsOrApplicationSecret;
+      logs = enableLogs;
     } else {
       // New API: constructor(applicationId, options)
-      applicationSecret = optionsOrSecret.applicationSecret;
-      signature = optionsOrSecret.signature;
-      logs = optionsOrSecret.logs;
+      applicationSecret = optionsOrApplicationSecret.applicationSecret;
+      signature = optionsOrApplicationSecret.signature;
+      logs = optionsOrApplicationSecret.logs;
     }
 
     // Validate that exactly one auth method is provided
@@ -134,7 +134,6 @@ export class ReclaimClient {
       sessionId: this.sessionId,
       logType: LogType.VERIFICATION_STARTED,
       applicationId: this.applicationId,
-      signatureId: this.signatureData?.signatureId,
     });
 
     // Fetch attestor URL from feature flags
@@ -183,7 +182,6 @@ export class ReclaimClient {
             sessionId: this.sessionId,
             logType: LogType.PROOF_GENERATED,
             applicationId: this.applicationId,
-            signatureId: this.signatureData?.signatureId,
           });
         return await transformProof(claim);
       } catch (error) {
@@ -193,7 +191,6 @@ export class ReclaimClient {
             sessionId: this.sessionId,
             logType: LogType.ERROR,
             applicationId: this.applicationId,
-            signatureId: this.signatureData?.signatureId,
           });
           logger.error(error);
           throw error;

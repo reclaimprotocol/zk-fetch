@@ -24,12 +24,12 @@ export async function generateSessionSignature(config: SignatureConfig): Promise
   // Validate that the application is registered
   await validateAppRegistration(applicationId);
 
-  // Validate allowedUrls
-  if (!Array.isArray(allowedUrls) || allowedUrls.length === 0) {
-    throw new InvalidParamError('allowedUrls must be a non-empty array');
+  // Validate allowedUrls (empty array means allow all URLs - signature validation only)
+  if (!Array.isArray(allowedUrls)) {
+    throw new InvalidParamError('allowedUrls must be an array');
   }
 
-  // Validate all URLs
+  // Validate all URL patterns
   for (const url of allowedUrls) {
     if (typeof url !== 'string' || url.trim() === '') {
       throw new InvalidParamError('All URLs in allowedUrls must be non-empty strings');
@@ -39,17 +39,9 @@ export async function generateSessionSignature(config: SignatureConfig): Promise
     if (isRegexPattern(url)) {
       try {
         new RegExp(url);
-        continue;
       } catch (error) {
         throw new InvalidParamError(`Invalid regex pattern: ${url}`);
       }
-    }
-
-    // Validate URL format (allow wildcards)
-    try {
-      new URL(url.replace(/\/?\*$/, ''));
-    } catch {
-      throw new InvalidParamError(`Invalid URL format: ${url}`);
     }
   }
 
@@ -67,13 +59,9 @@ export async function generateSessionSignature(config: SignatureConfig): Promise
     throw new InvalidParamError(`expiresAt cannot exceed ${MAX_EXPIRY_HOURS} hours from now`);
   }
 
-  // Generate unique signature ID for tracking
-  const signatureId = v4().toString();
-
   const wallet = new ethers.Wallet(applicationSecret);
 
   const payload: SignatureData = {
-    signatureId,
     applicationId,
     allowedUrls,
     expiresAt: finalExpiresAt,
@@ -86,7 +74,7 @@ export async function generateSessionSignature(config: SignatureConfig): Promise
 
   // Log signature generation
   await sendLogs({
-    sessionId: signatureId,
+    sessionId: v4().toString(),
     logType: LogType.SESSION_TOKEN_GENERATED,
     applicationId,
   });
@@ -126,7 +114,7 @@ export function verifySessionSignature(signature: string): SignatureData {
   }
 
   // Validate payload structure
-  const requiredFields = ['signatureId', 'applicationId', 'allowedUrls', 'expiresAt'];
+  const requiredFields = ['applicationId', 'allowedUrls', 'expiresAt'];
   if (!requiredFields.every(field => payload[field as keyof SignatureData]) || !Array.isArray(payload.allowedUrls)) {
     throw new InvalidParamError('Invalid signature payload structure');
   }

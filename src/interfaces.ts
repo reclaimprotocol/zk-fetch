@@ -34,7 +34,6 @@ export interface SendLogsParams {
     sessionId: string;
     logType: LogType;
     applicationId: string;
-    signatureId?: string;
 }
 
 
@@ -72,7 +71,6 @@ export interface SignatureConfig {
 }
 
 export interface SignatureData {
-  signatureId: string;
   applicationId: string;
   allowedUrls: string[];
   expiresAt: number;

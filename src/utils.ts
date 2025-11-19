@@ -220,6 +220,11 @@ export function isRegexPattern(pattern: string): boolean {
  * @returns true if URL is allowed
  */
 export function isUrlAllowed(url: string, allowedUrls: string[]): boolean {
+  // Empty allowedUrls means allow all URLs (signature validation only)
+  if (allowedUrls.length === 0) {
+    return true;
+  }
+
   // Security: Canonicalize URL to prevent path traversal attacks
   // This resolves .. segments and normalizes the URL
   let canonicalUrl: string;
@@ -327,8 +332,7 @@ export async function sendLogs(
   {
     sessionId,
     logType,
-    applicationId,
-    signatureId,
+    applicationId
   }: SendLogsParams
 ): Promise<void> {
   try {
@@ -340,7 +344,6 @@ export async function sendLogs(
       date: new Date().toISOString(),
       applicationId: applicationId,
       applicationName: getAppName,
-      ...(signatureId && { signatureId }),
     })
     const response = await fetch(url, {
       method: 'POST',
