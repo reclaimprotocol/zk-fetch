@@ -1,6 +1,6 @@
 import { createClaimOnAttestor } from "@reclaimprotocol/attestor-core";
 import { HttpMethod, LogType } from "./types";
-import { Options, secretOptions, ReclaimClientOptions, SignatureData } from "./interfaces";
+import { Options, secretOptions, SignatureData } from "./interfaces";
 import {
   assertCorrectnessOfOptions,
   validateURL,
@@ -28,42 +28,22 @@ export class ReclaimClient {
   /**
    * Creates a new ReclaimClient instance
    * @param applicationId - Your Reclaim application ID
-   * @param options - Configuration options (signature or applicationSecret)
+   * @param applicationSecret - Either application secret (0x...) or signature (ey...)
+   * @param logs - Enable logging (optional, default: false)
    */
-  constructor(applicationId: string, options: ReclaimClientOptions);
-  constructor(applicationId: string, applicationSecret: string, logs?: boolean);
   constructor(
     applicationId: string,
-    optionsOrApplicationSecret: ReclaimClientOptions | string,
-    enableLogs?: boolean
+    applicationSecret: string,
+    logs?: boolean
   ) {
-    let applicationSecret: string | undefined;
-    let signature: string | undefined;
-    let logs: boolean | undefined;
-
-    if (typeof optionsOrApplicationSecret === 'string') {
-      // Backward compatible API: constructor(applicationId, applicationSecret, logs?)
-      applicationSecret = optionsOrApplicationSecret;
-      logs = enableLogs;
-    } else {
-      // New API: constructor(applicationId, options)
-      applicationSecret = optionsOrApplicationSecret.applicationSecret;
-      signature = optionsOrApplicationSecret.signature;
-      logs = optionsOrApplicationSecret.logs;
-    }
-
-    // Validate that exactly one auth method is provided
-    if (applicationSecret && signature) {
-      throw new InvalidParamError('Cannot provide both applicationSecret and signature. Use only one.');
-    }
-
-    if (!applicationSecret && !signature) {
-      throw new InvalidParamError('Must provide either applicationSecret (backend) or signature (frontend).');
-    }
-
     // Validate applicationId
     if (!applicationId || typeof applicationId !== 'string') {
       throw new InvalidParamError('applicationId must be a non-empty string');
+    }
+
+    // Validate applicationSecret
+    if (!applicationSecret || typeof applicationSecret !== 'string') {
+      throw new InvalidParamError('applicationSecret must be a non-empty string');
     }
 
     this.applicationId = applicationId;
@@ -73,27 +53,38 @@ export class ReclaimClient {
     // Set up logger
     logger.level = logs ? "info" : "silent";
 
-    if (applicationSecret) {
-      // Backend mode: validate and store secret
+    // Auto-detect authentication method based on format and length
+    if (applicationSecret.startsWith('0x')) {
+      if (applicationSecret.length < 10) {
+        throw new InvalidParamError('Invalid application secret: too short');
+      }
+
       validateApplicationIdAndSecret(applicationId, applicationSecret);
       this.applicationSecret = applicationSecret;
-      logger.info(
-        `Initializing client with applicationId: ${this.applicationId} and sessionId: ${this.sessionId}`
-      );
-    } else if (signature) {
-      // Frontend mode: verify and store signature data
-      this.signatureData = verifySessionSignature(signature);
 
-      // Verify the signature's applicationId matches
+      logger.info(
+        `Initializing backend client with applicationId: ${this.applicationId} and sessionId: ${this.sessionId}`
+      );
+    } else if (applicationSecret.startsWith('ey') && applicationSecret.includes('.')) {
+      const parts = applicationSecret.split('.');
+      if (parts.length !== 3 && parts.length !== 2) {
+        throw new InvalidParamError('Invalid signature: must have 2 or 3 parts separated by dots');
+      }
+
+      this.signatureData = verifySessionSignature(applicationSecret);
+
       if (this.signatureData.applicationId.toLowerCase() !== applicationId.toLowerCase()) {
         throw new InvalidParamError('Signature applicationId does not match provided applicationId');
       }
 
-      // Generate or retrieve owner key for frontend use
       this.ownerKey = getOrCreateOwnerKey(this.applicationId);
 
       logger.info(
-        `Initializing client (frontend mode) with applicationId: ${this.applicationId} and sessionId: ${this.sessionId}`
+        `Initializing  client with applicationId: ${this.applicationId} and sessionId: ${this.sessionId}`
+      );
+    } else {
+      throw new InvalidParamError(
+        'Invalid application secret'
       );
     }
   }
@@ -143,46 +134,46 @@ export class ReclaimClient {
     while (attempt < retries) {
       try {
         const claim = await createClaimOnAttestor({
-            name: "http",
-            params: {
-              method: (options?.method as HttpMethod) || HttpMethod.GET,
-              url: url,
-              responseMatches: secretOptions?.responseMatches || [
-                {
-                  type: "regex",
-                  value: "(?<data>.*)",
-                },
-              ],
-              headers: options?.headers,
-              geoLocation: options?.geoLocation,
-              responseRedactions: secretOptions?.responseRedactions || [],
-              body: options?.body || "",
-              paramValues: options?.paramValues,
-            },
-            context: options?.context,
-            secretParams: {
-              cookieStr: secretOptions?.cookieStr || "",
-              headers: secretOptions?.headers || {},
-              paramValues: secretOptions?.paramValues,
-            },
-            ownerPrivateKey: privateKey,
-            logger: logger,
-            client: {
-              url: attestorUrl,
-            },
-          });
+          name: "http",
+          params: {
+            method: (options?.method as HttpMethod) || HttpMethod.GET,
+            url: url,
+            responseMatches: secretOptions?.responseMatches || [
+              {
+                type: "regex",
+                value: "(?<data>.*)",
+              },
+            ],
+            headers: options?.headers,
+            geoLocation: options?.geoLocation,
+            responseRedactions: secretOptions?.responseRedactions || [],
+            body: options?.body || "",
+            paramValues: options?.paramValues,
+          },
+          context: options?.context,
+          secretParams: {
+            cookieStr: secretOptions?.cookieStr || "",
+            headers: secretOptions?.headers || {},
+            paramValues: secretOptions?.paramValues,
+          },
+          ownerPrivateKey: privateKey,
+          logger: logger,
+          client: {
+            url: attestorUrl,
+          },
+        });
 
-          if (claim.error) {
-            throw new Error(
-              `Failed to create claim on attestor: ${claim.error.message}`
-            );
-          }
+        if (claim.error) {
+          throw new Error(
+            `Failed to create claim on attestor: ${claim.error.message}`
+          );
+        }
 
-          await sendLogs({
-            sessionId: this.sessionId,
-            logType: LogType.PROOF_GENERATED,
-            applicationId: this.applicationId,
-          });
+        await sendLogs({
+          sessionId: this.sessionId,
+          logType: LogType.PROOF_GENERATED,
+          applicationId: this.applicationId,
+        });
         return await transformProof(claim);
       } catch (error) {
         attempt++;

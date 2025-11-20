@@ -48,7 +48,7 @@ export const generateTestSignature = async () => {
 export const zkFetchWithSignature = async (signature: string) => {
   const client = new ReclaimClient(
     process.env.APP_ID!,
-    { signature }
+    signature
   )
 
   const options = {
@@ -63,7 +63,7 @@ export const zkFetchWithSignature = async (signature: string) => {
       type: 'regex' as const,
       value: 'ethereum":{"usd":(?<price>.*?)}}',
     }],
-    responseRedactions: [{ regex: 'ethereum":{"usd":(?<price>.*?)}}'}],
+    responseRedactions: [{ regex: 'ethereum":{"usd":(?<price>.*?)}}' }],
   }
 
   const proof = await client.zkFetch(

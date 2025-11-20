@@ -5,7 +5,7 @@ import {
   testUrlPatterns,
   testBackendValidation
 } from './signature'
-import { ReclaimClient } from '../src'
+import { ReclaimClient, generateSessionSignature } from '../src'
 import { config } from 'dotenv'
 config()
 
@@ -50,7 +50,7 @@ describe('Signature-Based zkFetch', () => {
     expect(() => {
       new ReclaimClient(
         '0xWrongApplicationId',
-        { signature }
+        signature
       )
     }).toThrow('Signature applicationId does not match')
   })
@@ -59,7 +59,7 @@ describe('Signature-Based zkFetch', () => {
     const signature = await generateTestSignature()
     const client = new ReclaimClient(
       process.env.APP_ID!,
-      { signature }
+      signature
     )
 
     await expect(async () => {
@@ -69,6 +69,31 @@ describe('Signature-Based zkFetch', () => {
       )
     }).rejects.toThrow('not allowed by the signature')
   }, 10000)
+
+  test('should allow any URL with empty allowedUrls', async () => {
+    const signature = await generateSessionSignature({
+      applicationId: process.env.APP_ID!,
+      applicationSecret: process.env.APP_SECRET!,
+      allowedUrls: [], // Empty array allows all
+      expiresAt: Math.floor(Date.now() / 1000) + 3600
+    })
+
+    const client = new ReclaimClient(
+      process.env.APP_ID!,
+      signature
+    )
+
+    const options = {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' }
+    }
+
+    try {
+      await client.zkFetch('https://google.com', options)
+    } catch (error: any) {
+      expect(error.message).not.toContain('not allowed by the signature')
+    }
+  })
 })
 
 describe('URL Pattern Matching', () => {
@@ -116,7 +141,7 @@ describe('App ID & Secret Authentication', () => {
         type: 'regex' as const,
         value: 'ethereum":{"usd":(?<price>.*?)}}',
       }],
-      responseRedactions: [{ regex: 'ethereum":{"usd":(?<price>.*?)}}'}],
+      responseRedactions: [{ regex: 'ethereum":{"usd":(?<price>.*?)}}' }],
     }
 
     const proof = await client.zkFetch(
@@ -129,36 +154,7 @@ describe('App ID & Secret Authentication', () => {
     expect(proof?.claimData).toBeDefined()
   }, 100000)
 
-  test('should work with new options format', async () => {
-    const client = new ReclaimClient(
-      process.env.APP_ID!,
-      { applicationSecret: process.env.APP_SECRET! }
-    )
 
-    const options = {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      }
-    }
-
-    const privateOptions = {
-      responseMatches: [{
-        type: 'regex' as const,
-        value: 'ethereum":{"usd":(?<price>.*?)}}',
-      }],
-      responseRedactions: [{ regex: 'ethereum":{"usd":(?<price>.*?)}}'}],
-    }
-
-    const proof = await client.zkFetch(
-      'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd',
-      options,
-      privateOptions
-    )
-
-    expect(proof).toBeDefined()
-    expect(proof?.claimData).toBeDefined()
-  }, 100000)
 })
 
 describe('Error Handling', () => {
@@ -168,18 +164,8 @@ describe('Error Handling', () => {
         process.env.APP_ID!,
         {} as any // Neither secret nor signature
       )
-    }).toThrow('Must provide either applicationSecret')
+    }).toThrow('applicationSecret must be a non-empty string')
   })
 
-  test('should reject both secret and signature', () => {
-    expect(() => {
-      new ReclaimClient(
-        process.env.APP_ID!,
-        {
-          applicationSecret: process.env.APP_SECRET!,
-          signature: 'some-signature'
-        }
-      )
-    }).toThrow('Cannot provide both')
-  })
+
 })
