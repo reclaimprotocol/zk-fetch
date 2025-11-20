@@ -63,7 +63,7 @@ export class ReclaimClient {
       this.applicationSecret = applicationSecret;
 
       logger.info(
-        `Initializing backend client with applicationId: ${this.applicationId} and sessionId: ${this.sessionId}`
+        `Initializing client with applicationId: ${this.applicationId} and sessionId: ${this.sessionId}`
       );
     } else if (applicationSecret.startsWith('ey') && applicationSecret.includes('.')) {
       const parts = applicationSecret.split('.');
@@ -80,7 +80,7 @@ export class ReclaimClient {
       this.ownerKey = getOrCreateOwnerKey(this.applicationId);
 
       logger.info(
-        `Initializing  client with applicationId: ${this.applicationId} and sessionId: ${this.sessionId}`
+        `Initializing client with applicationId: ${this.applicationId} and sessionId: ${this.sessionId}`
       );
     } else {
       throw new InvalidParamError(
