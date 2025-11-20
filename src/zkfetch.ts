@@ -55,8 +55,8 @@ export class ReclaimClient {
 
     // Auto-detect authentication method based on format and length
     if (applicationSecret.startsWith('0x')) {
-      if (applicationSecret.length < 10) {
-        throw new InvalidParamError('Invalid application secret: too short');
+      if (applicationSecret.length !== 66) {
+        throw new InvalidParamError('Invalid application secret: must be 66 characters (0x + 64 hex digits)');
       }
 
       validateApplicationIdAndSecret(applicationId, applicationSecret);
@@ -65,10 +65,10 @@ export class ReclaimClient {
       logger.info(
         `Initializing client with applicationId: ${this.applicationId} and sessionId: ${this.sessionId}`
       );
-    } else if (applicationSecret.startsWith('ey') && applicationSecret.includes('.')) {
+    } else if (applicationSecret.startsWith('ey') && applicationSecret.includes('.') && applicationSecret.includes('0x')) {
       const parts = applicationSecret.split('.');
-      if (parts.length !== 3 && parts.length !== 2) {
-        throw new InvalidParamError('Invalid signature: must have 2 or 3 parts separated by dots');
+      if (parts.length !== 2) {
+        throw new InvalidParamError('Invalid signature');
       }
 
       this.signatureData = verifySessionSignature(applicationSecret);
