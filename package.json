@@ -1,12 +1,13 @@
 {
   "name": "@reclaimprotocol/zk-fetch",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "HTTPS Fetch with a zkproof of correctness of fetch",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
     "dist",
-    "scripts"
+    "scripts",
+    "lib"
   ],
   "tsup": {
     "entry": [

@@ -27,10 +27,6 @@ export interface CircuitConfig {
   name: string;
 }
 
-// Default circuit configurations
-const DEFAULT_CIRCUITS: CircuitConfig[] = [
-];
-
 export class ReclaimProtocolError extends Error {
   public readonly code: ReclaimError;
 
@@ -99,7 +95,7 @@ export class ReclaimSDK {
    */
   public initializeZKCircuits(
     circuitsPath: string,
-    circuits: CircuitConfig[] = DEFAULT_CIRCUITS
+    circuits: CircuitConfig[]
   ): void {
     this.ensureInitialized();
 
@@ -168,7 +164,7 @@ export class ReclaimSDK {
     }
 
     try {
-        return JSON.parse(claimJson) as TeeProtocolResult;
+      return JSON.parse(claimJson) as TeeProtocolResult;
     } finally {
       // Free the allocated pointer
       if (rawPointer) {
@@ -212,6 +208,3 @@ export function createReclaimSDK(libraryPath?: string): ReclaimSDK {
 
 // Re-export bindings for advanced usage
 export { loadLibrary, getErrorMessage, getVersion, initAlgorithm, freePointer } from './bindings';
-
-// Export default circuits for custom initialization
-export { DEFAULT_CIRCUITS };
