@@ -10,15 +10,6 @@ import {
 } from './interfaces';
 
 
-// Re-export TEE interfaces for convenience
-export type {
-  TeeSignature,
-  TeeClaimData,
-  TeeProtocolResult,
-  TeeProviderRequest,
-  TeeReclaimConfig,
-} from './interfaces';
-
 // Circuit configuration
 export interface CircuitConfig {
   algorithmId: AlgorithmID;
@@ -205,6 +196,3 @@ export function createReclaimSDK(libraryPath?: string): ReclaimSDK {
   sdk.init();
   return sdk;
 }
-
-// Re-export bindings for advanced usage
-export { loadLibrary, getErrorMessage, getVersion, initAlgorithm, freePointer } from './bindings';
