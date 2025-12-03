@@ -1,6 +1,6 @@
 import { createClaimOnAttestor } from "@reclaimprotocol/attestor-core";
 import { HttpMethod, LogType } from "./types";
-import { Options, secretOptions, SignatureData } from "./interfaces";
+import { Options, secretOptions, SignatureData, ReclaimClientOptions } from "./interfaces";
 import {
   assertCorrectnessOfOptions,
   validateURL,
@@ -8,6 +8,7 @@ import {
   validateApplicationIdAndSecret,
   transformProof,
   getAttestorUrl,
+  getTeeUrls,
   isUrlAllowed,
   getOrCreateOwnerKey,
 } from "./utils";
@@ -15,6 +16,7 @@ import { v4 } from "uuid";
 import P from "pino";
 import { verifySessionSignature } from "./signature";
 import { InvalidParamError } from "./errors";
+import { ReclaimSDK } from "./tee";
 const logger = P();
 
 export class ReclaimClient {
@@ -23,6 +25,8 @@ export class ReclaimClient {
   signatureData?: SignatureData;
   ownerKey?: string;
   logs?: boolean;
+  tee?: boolean;
+  private teeSDK?: ReclaimSDK;
   sessionId: string;
 
   /**
@@ -30,11 +34,12 @@ export class ReclaimClient {
    * @param applicationId - Your Reclaim application ID
    * @param applicationSecret - Either application secret (0x...) or signature (ey...)
    * @param logs - Enable logging (optional, default: false)
+   * @param tee - Enable TEE mode (optional, default: false)
    */
   constructor(
     applicationId: string,
     applicationSecret: string,
-    logs?: boolean
+    options?: ReclaimClientOptions
   ) {
     // Validate applicationId
     if (!applicationId || typeof applicationId !== 'string') {
@@ -48,10 +53,17 @@ export class ReclaimClient {
 
     this.applicationId = applicationId;
     this.sessionId = v4().toString();
-    this.logs = logs;
+    this.logs = options?.logs;
+    this.tee = options?.useTee;
 
     // Set up logger
-    logger.level = logs ? "info" : "silent";
+    logger.level = options?.logs ? "info" : "silent";
+
+    // Initialize TEE SDK if TEE mode is enabled
+    if (options?.useTee) {
+      this.teeSDK = new ReclaimSDK();
+      this.teeSDK.init();
+    }
 
     // Auto-detect authentication method based on format and length
     if (applicationSecret.startsWith('0x')) {
@@ -127,6 +139,11 @@ export class ReclaimClient {
       applicationId: this.applicationId,
     });
 
+    // Use TEE execution path if TEE mode is enabled
+    if (this.tee && this.teeSDK) {
+      return await this.zkFetchWithTee(url, options, secretOptions, retries, retryInterval);
+    }
+
     // Fetch attestor URL from feature flags
     const attestorUrl = await getAttestorUrl();
 
@@ -175,6 +192,107 @@ export class ReclaimClient {
           applicationId: this.applicationId,
         });
         return await transformProof(claim);
+      } catch (error) {
+        attempt++;
+        if (attempt >= retries) {
+          await sendLogs({
+            sessionId: this.sessionId,
+            logType: LogType.ERROR,
+            applicationId: this.applicationId,
+          });
+          logger.error(error);
+          throw error;
+        }
+        await new Promise((resolve) => setTimeout(resolve, retryInterval));
+      }
+    }
+  }
+
+  /**
+   * Execute zkFetch using TEE (Trusted Execution Environment)
+   */
+  private async zkFetchWithTee(
+    url: string,
+    options?: Options,
+    secretOptions?: secretOptions,
+    retries = 1,
+    retryInterval = 1000
+  ) {
+    if (!this.teeSDK) {
+      throw new InvalidParamError('TEE SDK not initialized');
+    }
+
+    // Build the request for TEE SDK - format must match TEE service expectations
+    const defaultHeaders = {
+      "x-secure-request": "1",
+    };
+
+    const request = {
+      name: "http",
+      params: {
+        url: url,
+        method: (options?.method as HttpMethod) || HttpMethod.GET,
+        responseMatches: secretOptions?.responseMatches || [
+          {
+            type: "regex",
+            value: "(?<data>.*)",
+          },
+        ],
+        responseRedactions: secretOptions?.responseRedactions || [],
+        body: options?.body || "",
+        paramValues: options?.paramValues || {},
+        geoLocation: options?.geoLocation,
+      },
+      context: options?.context ? JSON.stringify(options.context) : undefined,
+      secretParams: {
+        headers: { ...defaultHeaders, ...secretOptions?.headers },
+        cookieStr: secretOptions?.cookieStr || "",
+        paramValues: secretOptions?.paramValues || {},
+      },
+    };
+
+    const fetchedTeeUrls = await getTeeUrls();
+
+    // Build TEE config - user-provided URLs take precedence over feature flags
+    const teeConfig = {
+      teek_url: fetchedTeeUrls.teekUrl,
+      teet_url: fetchedTeeUrls.teetUrl,
+      // default 30s timeout
+      timeout_ms: 30000,
+    };
+
+    let attempt = 0;
+    while (attempt < retries) {
+      try {
+        const result = await this.teeSDK.executeProtocolAsync(request, teeConfig);
+
+        await sendLogs({
+          sessionId: this.sessionId,
+          logType: LogType.PROOF_GENERATED,
+          applicationId: this.applicationId,
+        });
+
+        // Transform TEE result to match the standard Proof format
+        return {
+          identifier: result.claim.identifier,
+          claimData: {
+            provider: result.claim.provider,
+            parameters: result.claim.parameters,
+            owner: result.claim.owner,
+            timestampS: result.claim.timestamp_s,
+            context: result.claim.context,
+            identifier: result.claim.identifier,
+            epoch: result.claim.epoch,
+          },
+          signatures: result.signatures.map(sig => sig.claim_signature),
+          witnesses: result.signatures.map(sig => ({
+            id: sig.attestor_address,
+            url: teeConfig.teek_url,
+          })),
+          extractedParameterValues: result.claim.context
+            ? JSON.parse(result.claim.context)?.extractedParameters
+            : '',
+        };
       } catch (error) {
         attempt++;
         if (attempt >= retries) {

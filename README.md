@@ -110,7 +110,7 @@ const { signature } = await response.json();
 // Initialize with signature - safe for frontend!
 const client = new ReclaimClient(
   'APPLICATION_ID',
-  { signature }
+  signature
 );
 
 // Make requests (only to URLs in allowlist)
@@ -130,6 +130,18 @@ const proof = await client.zkFetch(
 - `'https://api.example.com/data'` - Exact match only
 - `'https://api.example.com/*'` - All paths under domain
 - `'^https://api\\.example\\.com/user/\\d+$'` - Regex pattern for dynamic URLs
+
+
+## Client Configuration
+
+You can customize the client behavior by passing an options object as the third argument:
+
+```javascript
+const client = new ReclaimClient('APPLICATION_ID', 'APPLICATION_SECRET', {
+  logs: true,   // Enable internal logging (default: false)
+  useTee: true  // Enable Trusted Execution Environment mode (default: proxy mode)
+});
+```
 
 
 ## Usage
