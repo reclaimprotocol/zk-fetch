@@ -1,6 +1,6 @@
 import { ApplicationError, InvalidMethodError, InvalidParamError, NetworkError } from './errors';
 import { ApplicationId, ApplicationSecret, HttpMethod } from './types'
-import { Options, Proof, SendLogsParams } from './interfaces';
+import { Options, Proof, SendLogsParams, TeeUrls } from './interfaces';
 import { ethers } from 'ethers';
 import { APP_BACKEND_URL, LOGS_BACKEND_URL, ATTESTOR_NODE_URL } from './constants';
 import P from "pino";
@@ -14,6 +14,7 @@ interface FeatureFlag {
 }
 
 let cachedAttestorUrl: string | null = null;
+let cachedTeeUrls: TeeUrls | null = null;
 
 /**
  * Gets or creates an owner key (wallet) for the given application ID
@@ -104,6 +105,58 @@ export async function getAttestorUrl(): Promise<string> {
   }
 }
 
+/**
+ * Fetches the TEE URLs from the feature flag API
+ * Falls back to default TEE URLs if API fails
+ * Caches the result for subsequent calls
+ */
+export async function getTeeUrls(): Promise<TeeUrls> {
+  // Return cached value if available
+  if (cachedTeeUrls) {
+    return cachedTeeUrls;
+  }
+
+  const defaultTeeUrls: TeeUrls = {
+    teekUrl: 'wss://tee-k.reclaimprotocol.org/ws',
+    teetUrl: 'wss://tee-t-gcp.reclaimprotocol.org/ws',
+    teeAttestorUrl: 'wss://attestor.reclaimprotocol.org:444/ws',
+  };
+
+  try {
+    const response = await fetch(
+      `${APP_BACKEND_URL}/api/feature-flags/get?featureFlagNames=teeUrls`,
+      {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Feature flag API returned ${response.status}`);
+    }
+
+    const flags: FeatureFlag[] = await response.json();
+    const teeUrlsFlag = flags.find(f => f.name === 'teeUrls');
+
+    if (teeUrlsFlag && teeUrlsFlag.value) {
+      const parsedUrls = JSON.parse(teeUrlsFlag.value) as TeeUrls;
+      cachedTeeUrls = parsedUrls;
+      return cachedTeeUrls;
+    }
+
+    // Flag not found, use fallback
+    cachedTeeUrls = defaultTeeUrls;
+    return cachedTeeUrls;
+  } catch (error) {
+    // API failed, use fallback
+    logger.warn('Failed to fetch TEE URLs from feature flags, using fallback:', error);
+    cachedTeeUrls = defaultTeeUrls;
+    return cachedTeeUrls;
+  }
+}
+
 /*
   Options validations utils
 */
@@ -179,6 +232,43 @@ export async function transformProof(proof: ClaimTunnelResponse): Promise<Proof>
         url: attestorUrl,
       },
     ],
+  };
+}
+
+/* Transform TEE Proof */
+export async function transformTeeProof(result: any, teeAttestorUrl: string): Promise<Proof> {
+  if (!result || !result.claim || !result.signatures) {
+    throw new InvalidParamError("Invalid TEE proof object");
+  }
+
+  // Safely parse context to extract parameters
+  let extractedParams = '';
+  if (result.claim.context) {
+    try {
+      extractedParams = JSON.parse(result.claim.context)?.extractedParameters || '';
+    } catch (parseError) {
+      logger.warn('Failed to parse TEE claim context as JSON:', result.claim.context);
+      extractedParams = '';
+    }
+  }
+
+  return {
+    identifier: result.claim.identifier,
+    claimData: {
+      provider: result.claim.provider,
+      parameters: result.claim.parameters,
+      owner: result.claim.owner,
+      timestampS: result.claim.timestamp_s,
+      context: result.claim.context,
+      identifier: result.claim.identifier,
+      epoch: result.claim.epoch,
+    },
+    signatures: result.signatures.map((sig: any) => sig.claim_signature),
+    witnesses: result.signatures.map((sig: any) => ({
+      id: sig.attestor_address,
+      url: teeAttestorUrl,
+    })),
+    extractedParameterValues: extractedParams,
   };
 }
 

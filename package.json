@@ -1,11 +1,13 @@
 {
   "name": "@reclaimprotocol/zk-fetch",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "HTTPS Fetch with a zkproof of correctness of fetch",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "scripts",
+    "lib"
   ],
   "tsup": {
     "entry": [
@@ -29,7 +31,8 @@
     "@swc/core": "^1.6.13",
     "ethers": "^5.7.2",
     "pino": "^8.20.0",
-    "uuid": "^9.0.1"
+    "uuid": "^9.0.1",
+    "koffi": "^2.9.0"
   },
   "devDependencies": {
     "@types/uuid": "^9.0.8",
@@ -42,7 +45,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://gitlab.reclaimprotocol.org/integrations/offchain/zk-fetch"
+    "url": "https://github.com/reclaimprotocol/zk-fetch"
   },
   "keywords": [
     "zk",

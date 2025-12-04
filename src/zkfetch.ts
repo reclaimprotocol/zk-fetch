@@ -7,7 +7,9 @@ import {
   sendLogs,
   validateApplicationIdAndSecret,
   transformProof,
+  transformTeeProof,
   getAttestorUrl,
+  getTeeUrls,
   isUrlAllowed,
   getOrCreateOwnerKey,
 } from "./utils";
@@ -15,6 +17,7 @@ import { v4 } from "uuid";
 import P from "pino";
 import { verifySessionSignature } from "./signature";
 import { InvalidParamError } from "./errors";
+import { ReclaimSDK } from "./tee";
 const logger = P();
 
 export class ReclaimClient {
@@ -23,6 +26,7 @@ export class ReclaimClient {
   signatureData?: SignatureData;
   ownerKey?: string;
   logs?: boolean;
+  private teeSDK?: ReclaimSDK;
   sessionId: string;
 
   /**
@@ -127,6 +131,16 @@ export class ReclaimClient {
       applicationId: this.applicationId,
     });
 
+    // Use TEE execution path if TEE mode is enabled for this request
+    if (options?.useTee) {
+      // Lazy-initialize TEE SDK if not already initialized
+      if (!this.teeSDK) {
+        this.teeSDK = new ReclaimSDK();
+        this.teeSDK.init();
+      }
+      return await this.zkFetchWithTee(url, options, secretOptions, retries, retryInterval);
+    }
+
     // Fetch attestor URL from feature flags
     const attestorUrl = await getAttestorUrl();
 
@@ -189,5 +203,98 @@ export class ReclaimClient {
         await new Promise((resolve) => setTimeout(resolve, retryInterval));
       }
     }
+  }
+
+  /**
+   * Execute zkFetch using TEE (Trusted Execution Environment)
+   */
+  private async zkFetchWithTee(
+    url: string,
+    options?: Options,
+    secretOptions?: secretOptions,
+    retries = 1,
+    retryInterval = 1000
+  ) {
+    if (!this.teeSDK) {
+      throw new InvalidParamError('TEE SDK not initialized');
+    }
+
+    // Build the request for TEE SDK - format must match TEE service expectations
+    const defaultHeaders = {
+      "x-secure-request": "1",
+    };
+
+    const request = {
+      name: "http",
+      params: {
+        url: url,
+        method: (options?.method as HttpMethod) || HttpMethod.GET,
+        headers: options?.headers,
+        responseMatches: secretOptions?.responseMatches || [
+          {
+            type: "regex",
+            value: "(?<data>.*)",
+          },
+        ],
+        responseRedactions: secretOptions?.responseRedactions || [],
+        body: options?.body || "",
+        paramValues: options?.paramValues || {},
+        geoLocation: options?.geoLocation,
+      },
+      context: options?.context ? JSON.stringify(options.context) : undefined,
+      secretParams: {
+        headers: { ...defaultHeaders, ...secretOptions?.headers },
+        cookieStr: secretOptions?.cookieStr || "",
+        paramValues: secretOptions?.paramValues || {},
+      },
+    };
+
+    const fetchedTeeUrls = await getTeeUrls();
+
+    // Build TEE config - user-provided URLs take precedence over feature flags
+    const teeConfig = {
+      teek_url: fetchedTeeUrls.teekUrl,
+      teet_url: fetchedTeeUrls.teetUrl,
+      // default 30s timeout
+      timeout_ms: 30000,
+    };
+
+    let attempt = 0;
+    while (attempt < retries) {
+      try {
+        const result = await this.teeSDK.executeProtocolAsync(request, teeConfig);
+
+        // Check for errors in TEE result (matching non-TEE path behavior)
+        if (result.claim.error) {
+          throw new Error(
+            `Failed to create claim on TEE: ${result.claim.error}`
+          );
+        }
+
+        await sendLogs({
+          sessionId: this.sessionId,
+          logType: LogType.PROOF_GENERATED,
+          applicationId: this.applicationId,
+        });
+
+        return await transformTeeProof(result, fetchedTeeUrls.teeAttestorUrl);
+      } catch (error) {
+        attempt++;
+        if (attempt >= retries) {
+          await sendLogs({
+            sessionId: this.sessionId,
+            logType: LogType.ERROR,
+            applicationId: this.applicationId,
+          });
+          logger.error(error);
+          throw error;
+        }
+        await new Promise((resolve) => setTimeout(resolve, retryInterval));
+      }
+    }
+
+    // This should never be reached due to the throw in the catch block,
+    // but TypeScript requires an explicit return for all code paths
+    throw new InvalidParamError('TEE execution failed: no attempts were made');
   }
 }

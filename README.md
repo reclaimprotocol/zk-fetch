@@ -110,7 +110,7 @@ const { signature } = await response.json();
 // Initialize with signature - safe for frontend!
 const client = new ReclaimClient(
   'APPLICATION_ID',
-  { signature }
+  signature
 );
 
 // Make requests (only to URLs in allowlist)
@@ -130,6 +130,26 @@ const proof = await client.zkFetch(
 - `'https://api.example.com/data'` - Exact match only
 - `'https://api.example.com/*'` - All paths under domain
 - `'^https://api\\.example\\.com/user/\\d+$'` - Regex pattern for dynamic URLs
+
+
+## Client Configuration
+
+You can enable logging by passing `true` as the argument:
+
+```javascript
+const client = new ReclaimClient('APPLICATION_ID', 'APPLICATION_SECRET', true); // logs enabled
+```
+
+### Using TEE Mode
+
+TEE (Trusted Execution Environment) mode can be enabled per-request by setting `useTee: true` in the options:
+
+```javascript
+const proof = await client.zkFetch('https://api.example.com/data', {
+  method: 'GET',
+  useTee: true  // Enable TEE mode for this specific request
+});
+```
 
 
 ## Usage
