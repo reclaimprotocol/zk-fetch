@@ -4,7 +4,7 @@ config()
 
 export const getEthPrice = async () => {
     // Get your APP_ID and APP_SECRET from the Reclaim Devtool (https://dev.reclaimprotocol.org/) 
-    const reclaim = new ReclaimClient(process.env.APP_ID!, process.env.APP_SECRET!, { logs: true })
+    const reclaim = new ReclaimClient(process.env.APP_ID!, process.env.APP_SECRET!, true)
     const options = {
         method: "GET",
         headers: {

@@ -9,7 +9,7 @@ export const getEthPriceWithTee = async () => {
     const reclaim = new ReclaimClient(
         process.env.APP_ID!,
         process.env.APP_SECRET!,
-        { logs: false, useTee: true }
+        false
     )
     const options = {
         method: "GET",
@@ -19,7 +19,8 @@ export const getEthPriceWithTee = async () => {
         context: {
             contextAddress: "0x0000000000000000000000000000000000000000",
             contextMessage: "eth_price_tee"
-        }
+        },
+        useTee: true
     }
     const privateOptions = {
         responseMatches: [{
@@ -39,7 +40,7 @@ export const createTeeClient = (logs = false) => {
     return new ReclaimClient(
         process.env.APP_ID!,
         process.env.APP_SECRET!,
-        { logs, useTee: true }
+        logs
     )
 }
 
@@ -50,7 +51,7 @@ export const createNonTeeClient = (logs = false) => {
     return new ReclaimClient(
         process.env.APP_ID!,
         process.env.APP_SECRET!,
-        { logs, useTee: false }
+        logs
     )
 }
 
@@ -67,7 +68,8 @@ export const getBtcPriceWithTee = async () => {
         context: {
             contextAddress: "0x0000000000000000000000000000000000000000",
             contextMessage: "btc_price_tee"
-        }
+        },
+        useTee: true
     }
     const privateOptions = {
         responseMatches: [{

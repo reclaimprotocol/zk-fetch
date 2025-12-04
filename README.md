@@ -134,12 +134,20 @@ const proof = await client.zkFetch(
 
 ## Client Configuration
 
-You can customize the client behavior by passing an options object as the third argument:
+You can enable logging by passing `true` as the argument:
 
 ```javascript
-const client = new ReclaimClient('APPLICATION_ID', 'APPLICATION_SECRET', {
-  logs: true,   // Enable internal logging (default: false)
-  useTee: true  // Enable Trusted Execution Environment mode (default: proxy mode)
+const client = new ReclaimClient('APPLICATION_ID', 'APPLICATION_SECRET', true); // logs enabled
+```
+
+### Using TEE Mode
+
+TEE (Trusted Execution Environment) mode can be enabled per-request by setting `useTee: true` in the options:
+
+```javascript
+const proof = await client.zkFetch('https://api.example.com/data', {
+  method: 'GET',
+  useTee: true  // Enable TEE mode for this specific request
 });
 ```
 

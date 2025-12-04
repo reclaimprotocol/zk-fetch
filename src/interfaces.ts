@@ -26,17 +26,11 @@ export interface Options {
   geoLocation?: string;
   paramValues?: { [key: string]: string };
   context?: { contextAddress: string, contextMessage: string };
-}
-
-/**
- * Constructor options for ReclaimClient
- */
-export interface ReclaimClientOptions {
-  /** Enable logging (default: false) */
-  logs?: boolean;
-  /** Enable TEE mode (default: false) */
+  /** Enable TEE mode for this request (default: false) */
   useTee?: boolean;
 }
+
+
 
 
 export interface secretOptions {

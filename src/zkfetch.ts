@@ -1,12 +1,13 @@
 import { createClaimOnAttestor } from "@reclaimprotocol/attestor-core";
 import { HttpMethod, LogType } from "./types";
-import { Options, secretOptions, SignatureData, ReclaimClientOptions } from "./interfaces";
+import { Options, secretOptions, SignatureData } from "./interfaces";
 import {
   assertCorrectnessOfOptions,
   validateURL,
   sendLogs,
   validateApplicationIdAndSecret,
   transformProof,
+  transformTeeProof,
   getAttestorUrl,
   getTeeUrls,
   isUrlAllowed,
@@ -25,7 +26,6 @@ export class ReclaimClient {
   signatureData?: SignatureData;
   ownerKey?: string;
   logs?: boolean;
-  tee?: boolean;
   private teeSDK?: ReclaimSDK;
   sessionId: string;
 
@@ -34,12 +34,11 @@ export class ReclaimClient {
    * @param applicationId - Your Reclaim application ID
    * @param applicationSecret - Either application secret (0x...) or signature (ey...)
    * @param logs - Enable logging (optional, default: false)
-   * @param tee - Enable TEE mode (optional, default: false)
    */
   constructor(
     applicationId: string,
     applicationSecret: string,
-    options?: ReclaimClientOptions
+    logs?: boolean
   ) {
     // Validate applicationId
     if (!applicationId || typeof applicationId !== 'string') {
@@ -53,17 +52,10 @@ export class ReclaimClient {
 
     this.applicationId = applicationId;
     this.sessionId = v4().toString();
-    this.logs = options?.logs;
-    this.tee = options?.useTee;
+    this.logs = logs;
 
     // Set up logger
-    logger.level = options?.logs ? "info" : "silent";
-
-    // Initialize TEE SDK if TEE mode is enabled
-    if (options?.useTee) {
-      this.teeSDK = new ReclaimSDK();
-      this.teeSDK.init();
-    }
+    logger.level = logs ? "info" : "silent";
 
     // Auto-detect authentication method based on format and length
     if (applicationSecret.startsWith('0x')) {
@@ -139,8 +131,13 @@ export class ReclaimClient {
       applicationId: this.applicationId,
     });
 
-    // Use TEE execution path if TEE mode is enabled
-    if (this.tee && this.teeSDK) {
+    // Use TEE execution path if TEE mode is enabled for this request
+    if (options?.useTee) {
+      // Lazy-initialize TEE SDK if not already initialized
+      if (!this.teeSDK) {
+        this.teeSDK = new ReclaimSDK();
+        this.teeSDK.init();
+      }
       return await this.zkFetchWithTee(url, options, secretOptions, retries, retryInterval);
     }
 
@@ -232,6 +229,7 @@ export class ReclaimClient {
       params: {
         url: url,
         method: (options?.method as HttpMethod) || HttpMethod.GET,
+        headers: options?.headers,
         responseMatches: secretOptions?.responseMatches || [
           {
             type: "regex",
@@ -272,27 +270,7 @@ export class ReclaimClient {
           applicationId: this.applicationId,
         });
 
-        // Transform TEE result to match the standard Proof format
-        return {
-          identifier: result.claim.identifier,
-          claimData: {
-            provider: result.claim.provider,
-            parameters: result.claim.parameters,
-            owner: result.claim.owner,
-            timestampS: result.claim.timestamp_s,
-            context: result.claim.context,
-            identifier: result.claim.identifier,
-            epoch: result.claim.epoch,
-          },
-          signatures: result.signatures.map(sig => sig.claim_signature),
-          witnesses: result.signatures.map(sig => ({
-            id: sig.attestor_address,
-            url: teeConfig.teek_url,
-          })),
-          extractedParameterValues: result.claim.context
-            ? JSON.parse(result.claim.context)?.extractedParameters
-            : '',
-        };
+        return await transformTeeProof(result, fetchedTeeUrls.teeAttestorUrl);
       } catch (error) {
         attempt++;
         if (attempt >= retries) {
@@ -307,5 +285,9 @@ export class ReclaimClient {
         await new Promise((resolve) => setTimeout(resolve, retryInterval));
       }
     }
+
+    // This should never be reached due to the throw in the catch block,
+    // but TypeScript requires an explicit return for all code paths
+    throw new InvalidParamError('TEE execution failed: no attempts were made');
   }
 }

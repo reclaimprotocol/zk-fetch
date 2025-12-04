@@ -107,7 +107,7 @@ export async function getAttestorUrl(): Promise<string> {
 
 /**
  * Fetches the TEE URLs from the feature flag API
- * Falls back to default localhost URLs if API fails
+ * Falls back to default TEE URLs if API fails
  * Caches the result for subsequent calls
  */
 export async function getTeeUrls(): Promise<TeeUrls> {
@@ -232,6 +232,43 @@ export async function transformProof(proof: ClaimTunnelResponse): Promise<Proof>
         url: attestorUrl,
       },
     ],
+  };
+}
+
+/* Transform TEE Proof */
+export async function transformTeeProof(result: any, teeAttestorUrl: string): Promise<Proof> {
+  if (!result || !result.claim || !result.signatures) {
+    throw new InvalidParamError("Invalid TEE proof object");
+  }
+
+  // Safely parse context to extract parameters
+  let extractedParams = '';
+  if (result.claim.context) {
+    try {
+      extractedParams = JSON.parse(result.claim.context)?.extractedParameters || '';
+    } catch (parseError) {
+      logger.warn('Failed to parse TEE claim context as JSON:', result.claim.context);
+      extractedParams = '';
+    }
+  }
+
+  return {
+    identifier: result.claim.identifier,
+    claimData: {
+      provider: result.claim.provider,
+      parameters: result.claim.parameters,
+      owner: result.claim.owner,
+      timestampS: result.claim.timestamp_s,
+      context: result.claim.context,
+      identifier: result.claim.identifier,
+      epoch: result.claim.epoch,
+    },
+    signatures: result.signatures.map((sig: any) => sig.claim_signature),
+    witnesses: result.signatures.map((sig: any) => ({
+      id: sig.attestor_address,
+      url: teeAttestorUrl,
+    })),
+    extractedParameterValues: extractedParams,
   };
 }
 

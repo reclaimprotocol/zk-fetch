@@ -79,43 +79,6 @@ export class ReclaimSDK {
   }
 
   /**
-   * Initialize ZK circuits from a directory containing circuit files
-   * @param circuitsPath - Path to directory containing pk.* and r1cs.* files
-   * @param circuits - Optional custom circuit configurations (defaults to all OPRF circuits)
-   * @throws Error if circuit files are not found or initialization fails
-   */
-  public initializeZKCircuits(
-    circuitsPath: string,
-    circuits: CircuitConfig[]
-  ): void {
-    this.ensureInitialized();
-
-    if (!fs.existsSync(circuitsPath)) {
-      throw new Error(`Circuits directory not found: ${circuitsPath}`);
-    }
-
-    for (const circuit of circuits) {
-      const pkPath = path.join(circuitsPath, circuit.pkFile);
-      const r1csPath = path.join(circuitsPath, circuit.r1csFile);
-
-      if (!fs.existsSync(pkPath)) {
-        throw new Error(`Proving key not found: ${pkPath}`);
-      }
-      if (!fs.existsSync(r1csPath)) {
-        throw new Error(`R1CS file not found: ${r1csPath}`);
-      }
-
-      const pkData = fs.readFileSync(pkPath);
-      const r1csData = fs.readFileSync(r1csPath);
-
-      const success = bindings.initAlgorithm(circuit.algorithmId, pkData, r1csData);
-      if (!success) {
-        throw new Error(`Failed to initialize ${circuit.name} circuit`);
-      }
-    }
-  }
-
-  /**
    * Execute the Reclaim protocol
    * @param request - Provider request data
    * @param config - Optional configuration
