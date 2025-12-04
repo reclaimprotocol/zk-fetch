@@ -264,6 +264,13 @@ export class ReclaimClient {
       try {
         const result = await this.teeSDK.executeProtocolAsync(request, teeConfig);
 
+        // Check for errors in TEE result (matching non-TEE path behavior)
+        if (result.claim.error) {
+          throw new Error(
+            `Failed to create claim on TEE: ${result.claim.error}`
+          );
+        }
+
         await sendLogs({
           sessionId: this.sessionId,
           logType: LogType.PROOF_GENERATED,
