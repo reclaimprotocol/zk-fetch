@@ -1,3 +1,7 @@
+import { setCryptoImplementation } from "@reclaimprotocol/tls";
+import { webcryptoCrypto } from "@reclaimprotocol/tls/webcrypto";
+setCryptoImplementation(webcryptoCrypto);
+
 import { createClaimOnAttestor } from "@reclaimprotocol/attestor-core";
 import { HttpMethod, LogType } from "./types";
 import { Options, secretOptions, SignatureData } from "./interfaces";
@@ -170,6 +174,7 @@ export class ReclaimClient {
             headers: secretOptions?.headers || {},
             paramValues: secretOptions?.paramValues,
           },
+          zkEngine: options?.zkEngine ?? 'stwo',
           ownerPrivateKey: privateKey,
           logger: logger,
           client: {
@@ -253,8 +258,9 @@ export class ReclaimClient {
 
     // Build TEE config - user-provided URLs take precedence over feature flags
     const teeConfig = {
-      teek_url: fetchedTeeUrls.teekUrl,
-      teet_url: fetchedTeeUrls.teetUrl,
+      teekUrl: fetchedTeeUrls.teekUrl,
+      teetUrl: fetchedTeeUrls.teetUrl,
+      attestorUrl: fetchedTeeUrls.teeAttestorUrl,
       // default 30s timeout
       timeout_ms: 30000,
     };

@@ -7,7 +7,14 @@
       "skipLibCheck": true,
       "forceConsistentCasingInFileNames": true,
       "resolveJsonModule": true,
-      "outDir": "./dist"
+      "outDir": "./dist",
+      "baseUrl": ".",
+      "paths": {
+        "@reclaimprotocol/attestor-core": ["node_modules/@reclaimprotocol/attestor-core/lib/index"],
+        "@reclaimprotocol/attestor-core/lib/*": ["node_modules/@reclaimprotocol/attestor-core/lib/*"],
+        "@reclaimprotocol/tls": ["node_modules/@reclaimprotocol/tls/lib/index"],
+        "@reclaimprotocol/tls/webcrypto": ["node_modules/@reclaimprotocol/tls/lib/crypto/webcrypto"]
+      }
     },
     "include": ["src/**/*.ts"],
     "exclude": ["node_modules"]

@@ -28,6 +28,10 @@ export interface Options {
   context?: { contextAddress: string, contextMessage: string };
   /** Enable TEE mode for this request (default: false) */
   useTee?: boolean;
+  /** ZK proof engine for the non-TEE path. Defaults to 'stwo'; switch to
+   *  'snarkjs' if you need it for circuits with larger witness sizes.
+   *  Ignored when `useTee` is true. */
+  zkEngine?: 'snarkjs' | 'stwo';
 }
 
 
@@ -36,7 +40,13 @@ export interface Options {
 export interface secretOptions {
   headers?: { [key: string]: string };
   responseMatches?: { type: 'regex' | 'contains', value: string }[];
-  responseRedactions?: { regex?: string, jsonPath?: string, xPath?: string }[];
+  /** Locate the byte span to redact via `regex`, `jsonPath`, or `xPath`.
+   *  Optional `hash` swaps the plain redaction for an OPRF commitment, so
+   *  `extractedParameterValues.<name>` returns the hash string instead of
+   *  the plaintext value:
+   *   - 'oprf'     — TEE path only (`useTee: true`); commitment is computed inside the enclave.
+   *   - 'oprf-raw' — non-TEE / proxy path only; forces the stwo zkEngine. */
+  responseRedactions?: { regex?: string, jsonPath?: string, xPath?: string, hash?: 'oprf' | 'oprf-raw' }[];
   cookieStr?: string;
   paramValues?: { [key: string]: string };
 }
@@ -121,16 +131,19 @@ export interface TeeProviderRequest {
   [key: string]: unknown;
 }
 
-/** TEE SDK runtime configuration */
+/** Runtime config passed through to libreclaim's executeProtocol. Matches the
+ *  Go-side `ConfigJSON` shape — `timeout_ms` is currently not honored by the
+ *  Go config struct and will be silently ignored. */
 export interface TeeReclaimConfig {
-  teek_url?: string;
-  teet_url?: string;
-  attestor_url?: string;
+  teekUrl?: string;
+  teetUrl?: string;
+  attestorUrl?: string;
   timeout_ms?: number;
   [key: string]: unknown;
 }
 
-/** TEE URLs from feature flags */
+/** TEE WebSocket endpoints used by the TEE path. Currently hardcoded in
+ *  `getTeeUrls()` (see src/utils.ts). */
 export interface TeeUrls {
   teekUrl: string;
   teetUrl: string;
