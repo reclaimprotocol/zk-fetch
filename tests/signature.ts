@@ -63,7 +63,7 @@ export const zkFetchWithSignature = async (signature: string) => {
       type: 'regex' as const,
       value: 'ethereum":{"usd":(?<price>.*?)}}',
     }],
-    responseRedactions: [{ regex: 'ethereum":{"usd":(?<price>.*?)}}' }],
+    responseRedactions: [],
   }
 
   const proof = await client.zkFetch(

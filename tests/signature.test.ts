@@ -141,7 +141,7 @@ describe('App ID & Secret Authentication', () => {
         type: 'regex' as const,
         value: 'ethereum":{"usd":(?<price>.*?)}}',
       }],
-      responseRedactions: [{ regex: 'ethereum":{"usd":(?<price>.*?)}}' }],
+      responseRedactions: [],
     }
 
     const proof = await client.zkFetch(
