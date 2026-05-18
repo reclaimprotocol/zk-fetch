@@ -106,31 +106,24 @@ export async function getAttestorUrl(): Promise<string> {
 }
 
 /**
- * Fetches the TEE URLs from the feature flag API
- * Falls back to default TEE URLs if API fails
- * Caches the result for subsequent calls
+ * Fetches the TEE URLs from the `teeUrlsv2` feature flag.
+ * Falls back to hardcoded defaults if the API call or parse fails.
  */
 export async function getTeeUrls(): Promise<TeeUrls> {
-  // Return cached value if available
   if (cachedTeeUrls) {
     return cachedTeeUrls;
   }
 
   const defaultTeeUrls: TeeUrls = {
-    teekUrl: 'wss://tee-k.reclaimprotocol.org/ws',
-    teetUrl: 'wss://tee-t-gcp.reclaimprotocol.org/ws',
+    teekUrl: 'wss://tk.reclaimprotocol.org/ws',
+    teetUrl: 'wss://tt.reclaimprotocol.org/ws',
     teeAttestorUrl: 'wss://attestor.reclaimprotocol.org:444/ws',
   };
 
   try {
     const response = await fetch(
-      `${APP_BACKEND_URL}/api/feature-flags/get?featureFlagNames=teeUrls`,
-      {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      }
+      `${APP_BACKEND_URL}/api/feature-flags/get?featureFlagNames=teeUrlsv2`,
+      { method: 'GET', headers: { 'Content-Type': 'application/json' } }
     );
 
     if (!response.ok) {
@@ -138,20 +131,17 @@ export async function getTeeUrls(): Promise<TeeUrls> {
     }
 
     const flags: FeatureFlag[] = await response.json();
-    const teeUrlsFlag = flags.find(f => f.name === 'teeUrls');
+    const teeUrlsFlag = flags.find(f => f.name === 'teeUrlsv2');
 
     if (teeUrlsFlag && teeUrlsFlag.value) {
-      const parsedUrls = JSON.parse(teeUrlsFlag.value) as TeeUrls;
-      cachedTeeUrls = parsedUrls;
+      cachedTeeUrls = JSON.parse(teeUrlsFlag.value) as TeeUrls;
       return cachedTeeUrls;
     }
 
-    // Flag not found, use fallback
     cachedTeeUrls = defaultTeeUrls;
     return cachedTeeUrls;
   } catch (error) {
-    // API failed, use fallback
-    logger.warn('Failed to fetch TEE URLs from feature flags, using fallback:', error);
+    logger.warn('Failed to fetch TEE URLs from feature flags, using default:', error);
     cachedTeeUrls = defaultTeeUrls;
     return cachedTeeUrls;
   }

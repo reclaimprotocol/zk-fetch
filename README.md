@@ -16,11 +16,7 @@ Key features:
 ## Installation
 
 ```bash
-# Install the package
 npm install @reclaimprotocol/zk-fetch
-
-# Download required ZK proof files
-node node_modules/@reclaimprotocol/zk-fetch/scripts/download-files
 ```
 
 ## Prerequisites
@@ -151,6 +147,30 @@ const proof = await client.zkFetch('https://api.example.com/data', {
 });
 ```
 
+### Choosing the ZK Engine (non-TEE)
+
+The non-TEE path uses the `stwo` proof engine by default. You can opt back into `snarkjs` per request:
+
+```javascript
+const proof = await client.zkFetch('https://api.example.com/data', {
+  method: 'GET',
+  zkEngine: 'snarkjs'  // 'snarkjs' | 'stwo' (default 'stwo')
+});
+```
+
+`zkEngine` is ignored when `useTee: true` — the TEE path picks its own engine.
+
+> **snarkjs requires extra setup.** snarkjs proofs need the `chacha20` / `aes-128-ctr` / `aes-256-ctr` circuit files
+> (`circuit.wasm`, `circuit_final.zkey`, `circuit.r1cs`) which are not shipped in the npm tarball. After `npm install`,
+> run the bundled downloader once:
+>
+> ```bash
+> node node_modules/@reclaimprotocol/zk-symmetric-crypto/lib/scripts/download-files
+> ```
+>
+> Without these files, `zkEngine: 'snarkjs'` will fail at proof-generation time. `stwo` ships its assets inline, so the
+> default path works out of the box.
+
 
 ## Usage
 
@@ -272,6 +292,12 @@ You can also use responseMatches and responseRedactions to match and redact the 
         jsonPath: '$.data', // JSON path to redact 
         xPath: '/data', // Xpath to redact  
         regex: '<REGEX>', // Regex to redact
+        // Optional: replace the matched span with an OPRF commitment instead
+        // of a plain redaction byte. When set, `extractedParameterValues.<name>`
+        // returns the OPRF hash string (not the plaintext).
+        //   'oprf'     — only honored on the TEE path (`useTee: true`)
+        //   'oprf-raw' — only honored on the non-TEE path
+        hash: 'oprf' // 'oprf' | 'oprf-raw'
       }
     ]
   }

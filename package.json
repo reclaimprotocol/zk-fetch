@@ -1,6 +1,6 @@
 {
   "name": "@reclaimprotocol/zk-fetch",
-  "version": "0.8.0",
+  "version": "1.0.0",
   "description": "HTTPS Fetch with a zkproof of correctness of fetch",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -15,26 +15,30 @@
     ],
     "splitting": false,
     "sourcemap": true,
-    "clean": true
+    "clean": true,
+    "external": [
+      "@reclaimprotocol/tls",
+      "@reclaimprotocol/tls/webcrypto",
+      "@reclaimprotocol/zk-symmetric-crypto",
+      "koffi"
+    ]
   },
   "scripts": {
     "build": "sh build.sh",
-    "download:circuits": "node scripts/download-files",
+    "download:circuits": "node node_modules/@reclaimprotocol/zk-symmetric-crypto/lib/scripts/download-files",
     "test": "vitest"
   },
   "author": "madhavanmalolan",
   "license": "SEE LICENSE IN https://github.com/reclaimprotocol/zk-fetch/blob/master/LICENSE.md",
   "dependencies": {
-    "@reclaimprotocol/attestor-core": "4.0.3",
-    "@reclaimprotocol/zk-symmetric-crypto": "3.0.5",
-    "@reclaimprotocol/tls": "github:reclaimprotocol/tls#8e0669a220341432673a20bb51f9339555701ef4",
+    "@reclaimprotocol/attestor-core": "5.0.5",
     "@swc/core": "^1.6.13",
     "ethers": "^5.7.2",
     "pino": "^8.20.0",
-    "uuid": "^9.0.1",
-    "koffi": "^2.9.0"
+    "uuid": "^9.0.1"
   },
   "devDependencies": {
+    "@types/node": "^25.8.0",
     "@types/uuid": "^9.0.8",
     "tsup": "^8.1.0",
     "typescript": "^5.4.5",
@@ -51,16 +55,5 @@
     "zk",
     "fetch",
     "reclaimprotocol"
-  ],
-  "resolutions": {
-    "@reclaimprotocol/tls": "github:reclaimprotocol/tls#8e0669a220341432673a20bb51f9339555701ef4"
-  },
-  "pnpm": {
-    "overrides": {
-      "@reclaimprotocol/tls": "github:reclaimprotocol/tls#8e0669a220341432673a20bb51f9339555701ef4"
-    }
-  },
-  "overrides": {
-    "@reclaimprotocol/tls": "github:reclaimprotocol/tls#8e0669a220341432673a20bb51f9339555701ef4"
-  }
+  ]
 }
