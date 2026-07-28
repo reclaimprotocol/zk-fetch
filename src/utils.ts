@@ -147,6 +147,26 @@ export async function getTeeUrls(): Promise<TeeUrls> {
   }
 }
 
+// Retry a cold-start allocator timeout instead of failing on the first attempt.
+export const TEE_MIN_ATTEMPTS = 3;
+
+/**
+ * TEE errors an immediate retry can plausibly recover from: allocator/enclave
+ * provisioning timeouts and transport blips. Non-transient failures (invalid
+ * claim, protocol rejection) are excluded so they still surface fast.
+ */
+export function isTransientTeeError(error: unknown): boolean {
+  const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  return (
+    message.includes("allocate") ||
+    message.includes("deadline exceeded") ||
+    message.includes("client.timeout") ||
+    message.includes("timeout") ||
+    message.includes("connection reset") ||
+    message.includes("eof")
+  );
+}
+
 /*
   Options validations utils
 */

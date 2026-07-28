@@ -130,10 +130,20 @@ const proof = await client.zkFetch(
 
 ## Client Configuration
 
-You can enable logging by passing `true` as the argument:
+The constructor accepts two optional arguments after the credentials:
 
 ```javascript
-const client = new ReclaimClient('APPLICATION_ID', 'APPLICATION_SECRET', true); // logs enabled
+new ReclaimClient(applicationId, applicationSecret, logs?, retries?)
+```
+
+| Argument | Type | Default | Description |
+| --- | --- | --- | --- |
+| `logs` | `boolean` | `false` | Enable internal logging. |
+| `retries` | `number` | `1` | Default number of attempts for every `zkFetch` call that doesn't pass its own `retries`. Must be a positive integer. |
+
+```javascript
+// logs enabled, and every zkFetch defaults to 3 attempts
+const client = new ReclaimClient('APPLICATION_ID', 'APPLICATION_SECRET', true, 3);
 ```
 
 ### Using TEE Mode
@@ -396,7 +406,7 @@ const onchainProof = transformForOnchain(proof);
 
 ### Add Retries and Retry Interval
 
-You can add retries and timeout to the fetch request. The default value for retries is 1 and timeout is 1000ms.
+You can add retries and a retry interval to the fetch request. The per-call default for `retries` is `1` (or whatever you set as the client-level default in the constructor), and `retryInterval` defaults to `1000`ms. A per-call value overrides the client default.
 
 ```
   const publicOptions = {
@@ -421,6 +431,8 @@ You can add retries and timeout to the fetch request. The default value for retr
     10000 // retryInterval
   )
 ```
+
+> **TEE note:** on the TEE path (`useTee: true`), a fresh enclave allocation can time out on a cold start. To avoid a single transient timeout hard-failing the request, the TEE path automatically retries such transient failures a few times even when `retries` is `1`. Non-transient errors still fail fast per your `retries`.
 
 ### Add GeoLocation
 

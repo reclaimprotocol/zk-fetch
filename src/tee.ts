@@ -1,6 +1,4 @@
 import * as bindings from './bindings';
-import * as fs from 'fs';
-import * as path from 'path';
 import {
   ReclaimError,
   AlgorithmID,
@@ -8,15 +6,6 @@ import {
   TeeProviderRequest,
   TeeReclaimConfig,
 } from './interfaces';
-
-
-// Circuit configuration
-export interface CircuitConfig {
-  algorithmId: AlgorithmID;
-  pkFile: string;
-  r1csFile: string;
-  name: string;
-}
 
 export class ReclaimProtocolError extends Error {
   public readonly code: ReclaimError;

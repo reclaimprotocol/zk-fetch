@@ -16,6 +16,8 @@ import {
   getTeeUrls,
   isUrlAllowed,
   getOrCreateOwnerKey,
+  isTransientTeeError,
+  TEE_MIN_ATTEMPTS,
 } from "./utils";
 import { v4 } from "uuid";
 import P from "pino";
@@ -32,17 +34,20 @@ export class ReclaimClient {
   logs?: boolean;
   private teeSDK?: ReclaimSDK;
   sessionId: string;
+  retries: number;
 
   /**
    * Creates a new ReclaimClient instance
    * @param applicationId - Your Reclaim application ID
    * @param applicationSecret - Either application secret (0x...) or signature (ey...)
    * @param logs - Enable logging (optional, default: false)
+   * @param retries - Default attempts per zkFetch call (optional, default: 1)
    */
   constructor(
     applicationId: string,
     applicationSecret: string,
-    logs?: boolean
+    logs?: boolean,
+    retries: number = 1
   ) {
     // Validate applicationId
     if (!applicationId || typeof applicationId !== 'string') {
@@ -54,9 +59,14 @@ export class ReclaimClient {
       throw new InvalidParamError('applicationSecret must be a non-empty string');
     }
 
+    if (!Number.isInteger(retries) || retries < 1) {
+      throw new InvalidParamError('retries must be a positive integer');
+    }
+
     this.applicationId = applicationId;
     this.sessionId = v4().toString();
     this.logs = logs;
+    this.retries = retries;
 
     // Set up logger
     logger.level = logs ? "info" : "silent";
@@ -101,7 +111,7 @@ export class ReclaimClient {
     url: string,
     options?: Options,
     secretOptions?: secretOptions,
-    retries = 1,
+    retries = this.retries,
     retryInterval = 1000
   ) {
     validateURL(url, "zkFetch");
@@ -129,8 +139,12 @@ export class ReclaimClient {
       throw new InvalidParamError('No authentication method available');
     }
 
+    // Generate a fresh session id for THIS verification. Reusing the client
+    // instance must not reuse the session id across proofs.
+    const sessionId = v4().toString();
+
     await sendLogs({
-      sessionId: this.sessionId,
+      sessionId,
       logType: LogType.VERIFICATION_STARTED,
       applicationId: this.applicationId,
     });
@@ -142,7 +156,7 @@ export class ReclaimClient {
         this.teeSDK = new ReclaimSDK();
         this.teeSDK.init();
       }
-      return await this.zkFetchWithTee(url, options, secretOptions, retries, retryInterval);
+      return await this.zkFetchWithTee(url, sessionId, options, secretOptions, retries, retryInterval);
     }
 
     // Fetch attestor URL from feature flags
@@ -189,7 +203,7 @@ export class ReclaimClient {
         }
 
         await sendLogs({
-          sessionId: this.sessionId,
+          sessionId,
           logType: LogType.PROOF_GENERATED,
           applicationId: this.applicationId,
         });
@@ -198,7 +212,7 @@ export class ReclaimClient {
         attempt++;
         if (attempt >= retries) {
           await sendLogs({
-            sessionId: this.sessionId,
+            sessionId,
             logType: LogType.ERROR,
             applicationId: this.applicationId,
           });
@@ -215,6 +229,7 @@ export class ReclaimClient {
    */
   private async zkFetchWithTee(
     url: string,
+    sessionId: string,
     options?: Options,
     secretOptions?: secretOptions,
     retries = 1,
@@ -256,17 +271,15 @@ export class ReclaimClient {
 
     const fetchedTeeUrls = await getTeeUrls();
 
-    // Build TEE config - user-provided URLs take precedence over feature flags
     const teeConfig = {
-      teekUrl: fetchedTeeUrls.teekUrl,
-      teetUrl: fetchedTeeUrls.teetUrl,
       attestorUrl: fetchedTeeUrls.teeAttestorUrl,
-      // default 30s timeout
-      timeout_ms: 30000,
+      timeout_ms: 30000, // currently ignored by libreclaim; kept for forward compat
     };
 
+    const maxAttempts = Math.max(retries, TEE_MIN_ATTEMPTS);
+
     let attempt = 0;
-    while (attempt < retries) {
+    while (attempt < maxAttempts) {
       try {
         const result = await this.teeSDK.executeProtocolAsync(request, teeConfig);
 
@@ -278,7 +291,7 @@ export class ReclaimClient {
         }
 
         await sendLogs({
-          sessionId: this.sessionId,
+          sessionId,
           logType: LogType.PROOF_GENERATED,
           applicationId: this.applicationId,
         });
@@ -286,15 +299,19 @@ export class ReclaimClient {
         return await transformTeeProof(result, fetchedTeeUrls.teeAttestorUrl);
       } catch (error) {
         attempt++;
-        if (attempt >= retries) {
+        const canRetry =
+          attempt < maxAttempts &&
+          (attempt < retries || isTransientTeeError(error));
+        if (!canRetry) {
           await sendLogs({
-            sessionId: this.sessionId,
+            sessionId,
             logType: LogType.ERROR,
             applicationId: this.applicationId,
           });
           logger.error(error);
           throw error;
         }
+        logger.warn(`TEE attempt ${attempt} failed, retrying:`, error);
         await new Promise((resolve) => setTimeout(resolve, retryInterval));
       }
     }

@@ -1,10 +1,8 @@
 import { ethers } from 'ethers';
 import { InvalidParamError } from './errors';
-import { validateApplicationIdAndSecret, validateAppRegistration, isRegexPattern, sendLogs } from './utils';
+import { validateApplicationIdAndSecret, validateAppRegistration, isRegexPattern } from './utils';
 import { SignatureConfig, SignatureData } from './interfaces';
 import { DEFAULT_EXPIRY_HOURS, MAX_EXPIRY_HOURS } from './constants';
-import { LogType } from './types';
-import { v4 } from 'uuid';
 
 
 
@@ -71,13 +69,6 @@ export async function generateSessionSignature(config: SignatureConfig): Promise
   const payloadString = JSON.stringify(payload);
   const messageHash = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(payloadString));
   const sig = await wallet.signMessage(ethers.utils.arrayify(messageHash));
-
-  // Log signature generation
-  await sendLogs({
-    sessionId: v4().toString(),
-    logType: LogType.SESSION_TOKEN_GENERATED,
-    applicationId,
-  });
 
   // Encode: base64(payload).signature
   const encodedPayload = Buffer.from(payloadString).toString('base64');
