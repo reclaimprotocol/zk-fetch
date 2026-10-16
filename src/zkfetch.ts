@@ -4,7 +4,7 @@ setCryptoImplementation(webcryptoCrypto);
 
 import { createClaimOnAttestor } from "@reclaimprotocol/attestor-core";
 import { HttpMethod, LogType } from "./types";
-import { Options, secretOptions, SignatureData } from "./interfaces";
+import { BuilderClientOptions, Options, secretOptions, SignatureData } from "./interfaces";
 import {
   assertCorrectnessOfOptions,
   validateURL,
@@ -18,12 +18,17 @@ import {
   getOrCreateOwnerKey,
   isTransientTeeError,
   TEE_MIN_ATTEMPTS,
+  createEphemeralOwnerKey,
+  getHostFromUrl,
+  requestBuilderAuthorization,
+  decodeBuilderAuthorizationToken,
 } from "./utils";
 import { v4 } from "uuid";
 import P from "pino";
 import { verifySessionSignature } from "./signature";
 import { InvalidParamError } from "./errors";
 import { ReclaimSDK } from "./tee";
+import { ATTESTOR_NODE_URL, BUILDER_BASE_URL } from "./constants";
 const logger = P();
 
 export class ReclaimClient {
@@ -35,9 +40,15 @@ export class ReclaimClient {
   private teeSDK?: ReclaimSDK;
   sessionId: string;
   retries: number;
+  /** Builder org token (`rorg_...`), set only when constructed in Builder mode. */
+  private builderOrgToken?: string;
+  private builderBaseUrl?: string;
+  /** Ephemeral, per-client wallet used as `ownerPrivateKey` for claims made in Builder mode. */
+  private builderOwnerKey?: string;
 
   /**
-   * Creates a new ReclaimClient instance
+   * Creates a new ReclaimClient instance, authenticated with a legacy
+   * application id/secret or signature.
    * @param applicationId - Your Reclaim application ID
    * @param applicationSecret - Either application secret (0x...) or signature (ey...)
    * @param logs - Enable logging (optional, default: false)
@@ -47,8 +58,56 @@ export class ReclaimClient {
     applicationId: string,
     applicationSecret: string,
     logs?: boolean,
+    retries?: number
+  );
+  /**
+   * Creates a new ReclaimClient instance in Builder mode: instead of an
+   * application secret, the client holds a Builder organization token and
+   * asks Builder to authorize each zkFetch call, drawing down the org's
+   * `ZKFETCH` quota pool.
+   */
+  constructor(builderOptions: BuilderClientOptions);
+  constructor(
+    applicationId: string | BuilderClientOptions,
+    applicationSecret?: string,
+    logs?: boolean,
     retries: number = 1
   ) {
+    if (typeof applicationId === 'object' && applicationId !== null) {
+      const {
+        orgToken,
+        builderBaseUrl,
+        logs: builderLogs,
+        retries: builderRetries = 1,
+      } = applicationId;
+
+      if (!orgToken || typeof orgToken !== 'string') {
+        throw new InvalidParamError('orgToken must be a non-empty string');
+      }
+
+      if (!Number.isInteger(builderRetries) || builderRetries < 1) {
+        throw new InvalidParamError('retries must be a positive integer');
+      }
+
+      // Builder mode has no legacy application id -- nothing in this codebase
+      // resolves one, and none of the Builder wire contract needs it.
+      this.applicationId = '';
+      this.sessionId = v4().toString();
+      this.logs = builderLogs;
+      this.retries = builderRetries;
+      this.builderOrgToken = orgToken;
+      this.builderBaseUrl = builderBaseUrl || BUILDER_BASE_URL;
+      this.builderOwnerKey = createEphemeralOwnerKey();
+
+      logger.level = builderLogs ? "info" : "silent";
+      logger.info(
+        `Initializing Builder-mode client with sessionId: ${this.sessionId}`
+      );
+      return;
+    }
+
+    // ---- Legacy applicationId/applicationSecret (or signature) path.  ----
+    // Unchanged from before Builder mode was added.
     // Validate applicationId
     if (!applicationId || typeof applicationId !== 'string') {
       throw new InvalidParamError('applicationId must be a non-empty string');
@@ -130,7 +189,12 @@ export class ReclaimClient {
 
     // Determine which private key to use
     let privateKey: string;
-    if (this.applicationSecret) {
+    if (this.builderOrgToken) {
+      // Builder mode: the org token authenticates to Builder, not the
+      // attestor, and it isn't an ethers-compatible signing key -- so this
+      // client's own ephemeral wallet owns any claim it creates.
+      privateKey = this.builderOwnerKey!;
+    } else if (this.applicationSecret) {
       privateKey = this.applicationSecret;
     } else if (this.ownerKey) {
       // Use the client-generated owner key
@@ -143,14 +207,25 @@ export class ReclaimClient {
     // instance must not reuse the session id across proofs.
     const sessionId = v4().toString();
 
-    await sendLogs({
-      sessionId,
-      logType: LogType.VERIFICATION_STARTED,
-      applicationId: this.applicationId,
-    });
+    // The legacy telemetry endpoint resolves `applicationId` against the old
+    // devtools backend; Builder-mode clients have no such id and aren't
+    // registered there, so skip it rather than fail every call on a
+    // best-effort log write.
+    if (!this.builderOrgToken) {
+      await sendLogs({
+        sessionId,
+        logType: LogType.VERIFICATION_STARTED,
+        applicationId: this.applicationId,
+      });
+    }
 
     // Use TEE execution path if TEE mode is enabled for this request
     if (options?.useTee) {
+      if (this.builderOrgToken) {
+        throw new InvalidParamError(
+          'Builder mode does not support useTee yet; use the standard (non-TEE) zkFetch path.'
+        );
+      }
       // Lazy-initialize TEE SDK if not already initialized
       if (!this.teeSDK) {
         this.teeSDK = new ReclaimSDK();
@@ -159,12 +234,31 @@ export class ReclaimClient {
       return await this.zkFetchWithTee(url, sessionId, options, secretOptions, retries, retryInterval);
     }
 
-    // Fetch attestor URL from feature flags
-    const attestorUrl = await getAttestorUrl();
+    // Builder uses the known attestor endpoint. Legacy clients continue to
+    // resolve their endpoint from the old feature-flag API.
+    const attestorUrl = this.builderOrgToken ? ATTESTOR_NODE_URL : await getAttestorUrl();
 
     let attempt = 0;
     while (attempt < retries) {
       try {
+        // In Builder mode, ask Builder to authorize THIS attempt against the
+        // target host, right before connecting. Builder charges the org's
+        // ZKFETCH quota pool when it issues this token, and the token itself
+        // expires in ~10s -- it must never be requested ahead of time or
+        // reused across attempts/calls.
+        const client: { url: string; authRequest?: ReturnType<typeof decodeBuilderAuthorizationToken> } = {
+          url: attestorUrl,
+        };
+        if (this.builderOrgToken) {
+          const host = getHostFromUrl(url);
+          const authorization = await requestBuilderAuthorization(
+            this.builderBaseUrl!,
+            this.builderOrgToken,
+            host
+          );
+          client.authRequest = decodeBuilderAuthorizationToken(authorization.token);
+        }
+
         const claim = await createClaimOnAttestor({
           name: "http",
           params: {
@@ -191,9 +285,7 @@ export class ReclaimClient {
           zkEngine: options?.zkEngine ?? 'stwo',
           ownerPrivateKey: privateKey,
           logger: logger,
-          client: {
-            url: attestorUrl,
-          },
+          client,
         });
 
         if (claim.error) {
@@ -202,20 +294,24 @@ export class ReclaimClient {
           );
         }
 
-        await sendLogs({
-          sessionId,
-          logType: LogType.PROOF_GENERATED,
-          applicationId: this.applicationId,
-        });
-        return await transformProof(claim);
+        if (!this.builderOrgToken) {
+          await sendLogs({
+            sessionId,
+            logType: LogType.PROOF_GENERATED,
+            applicationId: this.applicationId,
+          });
+        }
+        return await transformProof(claim, attestorUrl);
       } catch (error) {
         attempt++;
         if (attempt >= retries) {
-          await sendLogs({
-            sessionId,
-            logType: LogType.ERROR,
-            applicationId: this.applicationId,
-          });
+          if (!this.builderOrgToken) {
+            await sendLogs({
+              sessionId,
+              logType: LogType.ERROR,
+              applicationId: this.applicationId,
+            });
+          }
           logger.error(error);
           throw error;
         }
