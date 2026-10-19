@@ -1,10 +1,11 @@
-import { ApplicationError, InvalidMethodError, InvalidParamError, NetworkError } from './errors';
+import { ApplicationError, BuilderAuthorizationError, BuilderQuotaExceededError, InvalidMethodError, InvalidParamError, NetworkError } from './errors';
 import { ApplicationId, ApplicationSecret, HttpMethod } from './types'
-import { Options, Proof, SendLogsParams, TeeUrls } from './interfaces';
+import { BuilderAuthorizationResponse, Options, Proof, SendLogsParams, TeeUrls } from './interfaces';
 import { ethers } from 'ethers';
 import { APP_BACKEND_URL, LOGS_BACKEND_URL, ATTESTOR_NODE_URL } from './constants';
 import P from "pino";
 import { ClaimTunnelResponse } from '@reclaimprotocol/attestor-core/lib/proto/api';
+import type { AuthenticationRequest } from '@reclaimprotocol/attestor-core/lib/proto/api';
 const logger = P();
 
 interface FeatureFlag {
@@ -222,12 +223,10 @@ export async function validateAppRegistration(applicationId: ApplicationId): Pro
 }
 
 /* Transform Proof */
-export async function transformProof(proof: ClaimTunnelResponse): Promise<Proof> {
+export async function transformProof(proof: ClaimTunnelResponse, attestorUrl: string): Promise<Proof> {
   if (!proof || !proof.claim || !proof.signatures) {
     throw new InvalidParamError("Invalid proof object");
   }
-
-  const attestorUrl = await getAttestorUrl();
 
   return {
     claimData: proof.claim,
@@ -462,4 +461,151 @@ export async function sendLogs(
     }
     throw new NetworkError('Failed to send logs')
   }
+}
+
+/*
+  Builder-mode utils
+*/
+
+/**
+ * Creates a fresh, unregistered private key to use as `ownerPrivateKey` when
+ * generating a claim in Builder mode. Builder mode has no application
+ * secret to reuse as the claim owner -- it only ever holds an org token,
+ * which authenticates to Builder, not the attestor -- so each Builder-mode
+ * client mints its own throwaway wallet to sign/own the claims it creates.
+ */
+export function createEphemeralOwnerKey(): string {
+  return ethers.Wallet.createRandom().privateKey;
+}
+
+/**
+ * Extracts the hostname (no scheme, no port) Builder should record for a
+ * zkFetch call, e.g. "api.github.com" from "https://api.github.com/user".
+ */
+export function getHostFromUrl(url: string): string {
+  return new URL(url).hostname;
+}
+
+/**
+ * Asks Builder to authorize a zkFetch call against a given host. Builder
+ * charges the org's `ZKFETCH` quota pool at this step (not at proof time),
+ * so this must be called immediately before opening the attestor
+ * connection -- the returned token expires in ~10 seconds -- and never
+ * cached or reused across calls.
+ *
+ * @throws {BuilderQuotaExceededError} if Builder responds 402 or 429 (quota exhausted).
+ * @throws {BuilderAuthorizationError} on any other non-2xx response (e.g. 401 bad org token).
+ * @throws {NetworkError} if Builder cannot be reached at all.
+ */
+export async function requestBuilderAuthorization(
+  builderBaseUrl: string,
+  orgToken: string,
+  host: string
+): Promise<BuilderAuthorizationResponse> {
+  let response: Response;
+  try {
+    response = await fetch(`${builderBaseUrl}/fetch/authorizations`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${orgToken}`,
+      },
+      body: JSON.stringify({ host }),
+    });
+  } catch (error) {
+    throw new NetworkError(
+      `Failed to reach Builder at ${builderBaseUrl}: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+
+  if (response.status === 402 || response.status === 429) {
+    throw new BuilderQuotaExceededError(response.status);
+  }
+
+  if (response.status === 401) {
+    throw new BuilderAuthorizationError(
+      'Builder rejected the organization token (401 Unauthorized)',
+      401
+    );
+  }
+
+  if (!response.ok) {
+    let detail = '';
+    try {
+      detail = await response.text();
+    } catch {
+      // ignore -- fall through with no detail
+    }
+    throw new BuilderAuthorizationError(
+      `Builder authorization request failed with status ${response.status}${detail ? `: ${detail}` : ''}`,
+      response.status
+    );
+  }
+
+  let body: Partial<BuilderAuthorizationResponse>;
+  try {
+    body = await response.json();
+  } catch {
+    throw new BuilderAuthorizationError('Builder returned a non-JSON authorization response');
+  }
+
+  if (!body || typeof body.token !== 'string' || !body.token) {
+    throw new BuilderAuthorizationError('Builder authorization response is missing a token');
+  }
+
+  return { token: body.token, expiresAt: body.expiresAt ?? '' };
+}
+
+/**
+ * Decodes a Builder `token` (as returned by `requestBuilderAuthorization`)
+ * back into the attestor `AuthenticationRequest` object
+ * `createClaimOnAttestor`'s `client.authRequest` expects: `{ data, signature }`
+ * with `signature` as a `Uint8Array` (see
+ * `IAttestorClientInitParams`/`AuthenticationRequest` in
+ * `@reclaimprotocol/attestor-core`).
+ *
+ * The token is base64(JSON.stringify({ data, signature })) with `signature`
+ * itself base64-encoded inside that JSON -- a `Uint8Array` cannot survive
+ * JSON transport otherwise. This decodes both that flat-base64-string
+ * shape (what Builder's `createAttestorAuthentication` actually produces)
+ * and, defensively, attestor-core's own `{ type: 'uint8array', value }`
+ * wrapper (as produced by its `B64_JSON_REPLACER`/`B64_JSON_REVIVER`
+ * helpers), in case the wire format ever changes to use those.
+ */
+export function decodeBuilderAuthorizationToken(token: string): AuthenticationRequest {
+  let json: string;
+  try {
+    json = Buffer.from(token, 'base64').toString('utf-8');
+  } catch {
+    throw new InvalidParamError('Builder authorization token is not valid base64');
+  }
+
+  let parsed: any;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    throw new InvalidParamError('Builder authorization token does not contain valid JSON');
+  }
+
+  if (!parsed || typeof parsed !== 'object' || !parsed.data) {
+    throw new InvalidParamError('Builder authorization token has an unexpected shape');
+  }
+
+  let signature: unknown = parsed.signature;
+  if (typeof signature === 'string') {
+    signature = new Uint8Array(Buffer.from(signature, 'base64'));
+  } else if (
+    signature &&
+    typeof signature === 'object' &&
+    (signature as { type?: string }).type === 'uint8array' &&
+    typeof (signature as { value?: string }).value === 'string'
+  ) {
+    signature = new Uint8Array(Buffer.from((signature as { value: string }).value, 'base64'));
+  }
+
+  if (!(signature instanceof Uint8Array)) {
+    throw new InvalidParamError('Builder authorization token signature is not a valid byte array');
+  }
+
+  return { data: parsed.data, signature } as AuthenticationRequest;
 }

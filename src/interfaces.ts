@@ -57,6 +57,31 @@ export interface SendLogsParams {
   applicationId: string;
 }
 
+/**
+ * Options for constructing a Builder-mode `ReclaimClient`: instead of an
+ * application secret, the client holds a Builder organization token
+ * (`rorg_...`) and asks Builder to authorize each zkFetch call against the
+ * org's `ZKFETCH` quota pool.
+ */
+export interface BuilderClientOptions {
+  /** Builder organization token, e.g. `rorg_...`. */
+  orgToken: string;
+  /** Builder API base URL. Default: `https://build.reclaimprotocol.org`. */
+  builderBaseUrl?: string;
+  /** Enable logging (optional, default: false) */
+  logs?: boolean;
+  /** Default attempts per zkFetch call (optional, default: 1) */
+  retries?: number;
+}
+
+/** Response body from Builder's `POST /fetch/authorizations`. */
+export interface BuilderAuthorizationResponse {
+  /** Base64-encoded attestor `AuthenticationRequest`, valid for ~10s. */
+  token: string;
+  /** ISO 8601 timestamp of when `token` expires. */
+  expiresAt: string;
+}
+
 
 export interface Proof {
   identifier: string;

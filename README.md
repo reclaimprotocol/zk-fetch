@@ -127,6 +127,44 @@ const proof = await client.zkFetch(
 - `'https://api.example.com/*'` - All paths under domain
 - `'^https://api\\.example\\.com/user/\\d+$'` - Regex pattern for dynamic URLs
 
+### Builder Mode (Organization Token)
+
+Use this if you manage your zkFetch usage through [Reclaim Builder](https://build.reclaimprotocol.org). Instead of an application id/secret, the client holds a Builder organization token (`rorg_...`) and asks Builder to authorize each `zkFetch` call, drawing down your org's `ZKFETCH` quota.
+
+```javascript
+const { ReclaimClient } = require('@reclaimprotocol/zk-fetch');
+
+const client = new ReclaimClient({
+  orgToken: 'rorg_...',              // your Builder organization token
+  builderBaseUrl: undefined,          // optional, defaults to https://build.reclaimprotocol.org
+});
+
+const proof = await client.zkFetch('https://api.github.com/user', {
+  method: 'GET',
+  headers: { Authorization: 'Bearer <github token>' },
+});
+```
+
+Every call asks Builder for a short-lived, single-use authorization for the request's target host immediately before connecting to the attestor -- it is never requested ahead of time or reused across calls. This is what actually meters zkFetch against your Builder plan; the fetch and the proof itself still happen entirely in your own process, exactly as in the other modes.
+
+If your org's `ZKFETCH` quota is exhausted, Builder rejects the authorization and the call rejects with a `BuilderQuotaExceededError` (a subclass of `BuilderAuthorizationError`) instead of a generic error, so you can catch it specifically:
+
+```javascript
+const { ReclaimClient, BuilderQuotaExceededError } = require('@reclaimprotocol/zk-fetch');
+
+try {
+  const proof = await client.zkFetch('https://api.github.com/user', { method: 'GET' });
+} catch (error) {
+  if (error instanceof BuilderQuotaExceededError) {
+    // error.status is 402 or 429
+    console.error('Out of zkFetch quota for this billing period');
+  } else {
+    throw error;
+  }
+}
+```
+
+> Builder mode does not currently support `useTee: true`; it only covers the standard (non-TEE) `zkFetch` path.
 
 ## Client Configuration
 
