@@ -490,11 +490,17 @@ export function getHostFromUrl(url: string): string {
  * Asks Builder to authorize a zkFetch call against a given host. Builder
  * charges the org's `ZKFETCH` quota pool at this step (not at proof time),
  * so this must be called immediately before opening the attestor
- * connection -- the returned token expires in ~10 seconds -- and never
- * cached or reused across calls.
+ * connection -- the returned token, if any, expires in ~10 seconds -- and
+ * never cached or reused across calls.
+ *
+ * The `token` is optional. When Builder has no attestor signing key
+ * configured, it still authenticates the org token and charges the quota,
+ * but responds with an empty object, and the caller connects to the
+ * attestor without an `authRequest`.
  *
  * @throws {BuilderQuotaExceededError} if Builder responds 402 or 429 (quota exhausted).
  * @throws {BuilderAuthorizationError} on any other non-2xx response (e.g. 401 bad org token).
+ * @throws {BuilderAuthorizationError} if a 2xx response is not JSON, or has a `token` that is not a non-empty string.
  * @throws {NetworkError} if Builder cannot be reached at all.
  */
 export async function requestBuilderAuthorization(
@@ -549,11 +555,18 @@ export async function requestBuilderAuthorization(
     throw new BuilderAuthorizationError('Builder returned a non-JSON authorization response');
   }
 
-  if (!body || typeof body.token !== 'string' || !body.token) {
-    throw new BuilderAuthorizationError('Builder authorization response is missing a token');
+  if (!body || typeof body !== 'object') {
+    throw new BuilderAuthorizationError('Builder returned a non-JSON authorization response');
   }
 
-  return { token: body.token, expiresAt: body.expiresAt ?? '' };
+  // `token` may be omitted entirely, but if present it must be usable.
+  if (body.token !== undefined && (typeof body.token !== 'string' || !body.token)) {
+    throw new BuilderAuthorizationError('Builder authorization response has an invalid token');
+  }
+
+  return body.token
+    ? { token: body.token, expiresAt: body.expiresAt ?? '' }
+    : {};
 }
 
 /**

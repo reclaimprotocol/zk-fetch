@@ -243,9 +243,10 @@ export class ReclaimClient {
       try {
         // In Builder mode, ask Builder to authorize THIS attempt against the
         // target host, right before connecting. Builder charges the org's
-        // ZKFETCH quota pool when it issues this token, and the token itself
-        // expires in ~10s -- it must never be requested ahead of time or
-        // reused across attempts/calls.
+        // ZKFETCH quota pool at this step whether or not it returns a token.
+        // The token is optional: Builder omits it when it has no attestor
+        // signing key. When present it expires in ~10s -- it must never be
+        // requested ahead of time or reused across attempts/calls.
         const client: { url: string; authRequest?: ReturnType<typeof decodeBuilderAuthorizationToken> } = {
           url: attestorUrl,
         };
@@ -256,7 +257,9 @@ export class ReclaimClient {
             this.builderOrgToken,
             host
           );
-          client.authRequest = decodeBuilderAuthorizationToken(authorization.token);
+          if (authorization.token) {
+            client.authRequest = decodeBuilderAuthorizationToken(authorization.token);
+          }
         }
 
         const claim = await createClaimOnAttestor({
