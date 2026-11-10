@@ -76,10 +76,14 @@ export interface BuilderClientOptions {
 
 /** Response body from Builder's `POST /fetch/authorizations`. */
 export interface BuilderAuthorizationResponse {
-  /** Base64-encoded attestor `AuthenticationRequest`, valid for ~10s. */
-  token: string;
-  /** ISO 8601 timestamp of when `token` expires. */
-  expiresAt: string;
+  /**
+   * Base64-encoded attestor `AuthenticationRequest`, valid for ~10s. Absent
+   * when Builder has no attestor signing key configured; the attestor
+   * connection then proceeds without an `authRequest`.
+   */
+  token?: string;
+  /** ISO 8601 timestamp of when `token` expires. Present only with `token`. */
+  expiresAt?: string;
 }
 
 

@@ -181,6 +181,67 @@ describe('Builder-mode zkFetch: successful authorization flows into a proof atte
   })
 })
 
+describe('Builder-mode zkFetch: optional authorization token', () => {
+  const jsonResponse = (body: unknown, status = 200) =>
+    ({ ok: true, status, json: async () => body, text: async () => '' }) as Response
+
+  test('a 200 with an empty body connects to the attestor without an authRequest', async () => {
+    fetchMock.mockImplementation(async () => jsonResponse({}))
+
+    const client = new ReclaimClient({ orgToken: ORG_TOKEN, builderBaseUrl: BUILDER_BASE_URL })
+    const proof = await client.zkFetch('https://api.github.com/user', { method: 'GET' })
+
+    expect(proof.identifier).toBe('0xidentifier')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const callArgs = createClaimOnAttestorMock.mock.calls[0][0] as any
+    expect(callArgs.client.url).toBe('wss://attestor.reclaimprotocol.org/ws')
+    expect(callArgs.client.authRequest).toBeUndefined()
+  })
+
+  test('a 200 with a token passes the decoded authRequest', async () => {
+    const wallet = ethers.Wallet.createRandom()
+    const { request, token } = await mintBuilderToken(wallet.privateKey)
+    fetchMock.mockImplementation(async () => jsonResponse({ token, expiresAt: new Date().toISOString() }))
+
+    const client = new ReclaimClient({ orgToken: ORG_TOKEN, builderBaseUrl: BUILDER_BASE_URL })
+    await client.zkFetch('https://api.github.com/user', { method: 'GET' })
+
+    const callArgs = createClaimOnAttestorMock.mock.calls[0][0] as any
+    expect(callArgs.client.authRequest.data).toEqual(request.data)
+    expect(callArgs.client.authRequest.signature).toBeInstanceOf(Uint8Array)
+  })
+
+  test.each([[123], [''], [null], [{}]])('a 200 with invalid token %j is rejected', async (badToken) => {
+    fetchMock.mockImplementation(async () => jsonResponse({ token: badToken }))
+
+    const client = new ReclaimClient({ orgToken: ORG_TOKEN, builderBaseUrl: BUILDER_BASE_URL })
+    await expect(
+      client.zkFetch('https://api.github.com/user', { method: 'GET' })
+    ).rejects.toBeInstanceOf(BuilderAuthorizationError)
+    expect(createClaimOnAttestorMock).not.toHaveBeenCalled()
+  })
+
+  test('a 200 with a non-JSON body is rejected', async () => {
+    fetchMock.mockImplementation(
+      async () =>
+        ({
+          ok: true,
+          status: 200,
+          json: async () => {
+            throw new SyntaxError('Unexpected token')
+          },
+          text: async () => '',
+        }) as unknown as Response
+    )
+
+    const client = new ReclaimClient({ orgToken: ORG_TOKEN, builderBaseUrl: BUILDER_BASE_URL })
+    await expect(
+      client.zkFetch('https://api.github.com/user', { method: 'GET' })
+    ).rejects.toBeInstanceOf(BuilderAuthorizationError)
+    expect(createClaimOnAttestorMock).not.toHaveBeenCalled()
+  })
+})
+
 describe('legacy zkFetch remains on the devtools path', () => {
   test('uses the legacy feature flag for both attestation and proof witnesses', async () => {
     const wallet = ethers.Wallet.createRandom()
