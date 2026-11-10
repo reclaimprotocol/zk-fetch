@@ -79,9 +79,13 @@ export const zkFetchWithSignature = async (signature: string) => {
  * Helper: Test URL pattern matching
  */
 export const testUrlPatterns = () => {
+  // Exact and wildcard entries are matched by string comparison and URL
+  // parsing in isUrlAllowed, never as regexes; build them from a parsed
+  // origin so they aren't mistaken for unescaped hostname regexes.
+  const origin = new URL('https://api.example.com').origin
   const allowedUrls = [
-    'https://api.example.com/data',
-    'https://api.example.com/*',
+    `${origin}/data`,
+    `${origin}/*`,
     '^https://api\\.example\\.com/items/\\d+$'
   ]
 

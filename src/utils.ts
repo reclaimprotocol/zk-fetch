@@ -302,8 +302,47 @@ export function isRegexPattern(pattern: string): boolean {
   return (
     pattern.startsWith('^') ||
     (pattern.endsWith('$') && !pattern.includes('://')) ||
-    /\\[dDwWsS]|\[([^\]])+\]|\{\d+,?\d*\}|(\([^)]*\).*(?:\?:|\|))/.test(pattern)
+    /\\[dDwWsS]/.test(pattern) ||
+    hasCharacterClass(pattern) ||
+    /\{\d+,?\d*\}/.test(pattern) ||
+    hasGroupFollowedByRegexSyntax(pattern)
   );
+}
+
+/**
+ * True if `pattern` contains `[`, at least one character other than `]`,
+ * then `]` -- i.e. a non-empty character class like `[a-z]`.
+ * Linear-time replacement for the regex `/\[[^\]]+\]/`, which backtracks
+ * quadratically on inputs with many `[` and no closing `]`.
+ */
+function hasCharacterClass(pattern: string): boolean {
+  let open = -1;
+  for (let i = 0; i < pattern.length; i++) {
+    const ch = pattern[i];
+    if (ch === '[') {
+      if (open < 0) open = i;
+    } else if (ch === ']') {
+      if (open >= 0 && i > open + 1) return true;
+      open = -1;
+    }
+  }
+  return false;
+}
+
+/**
+ * True if `pattern` has a `(...)` group followed later by `?:` or `|`.
+ * Linear-time replacement for the regex `/\([^)]*\).*(?:\?:|\|)/`: the
+ * earliest `(` closes at the earliest `)`, which leaves the longest tail to
+ * search, so checking only that one group is equivalent.
+ */
+function hasGroupFollowedByRegexSyntax(pattern: string): boolean {
+  const open = pattern.indexOf('(');
+  if (open < 0) return false;
+  const close = pattern.indexOf(')', open + 1);
+  if (close < 0) return false;
+  // `.` in the original regex doesn't cross line breaks.
+  const tail = pattern.slice(close + 1).split(/[\n\r\u2028\u2029]/)[0];
+  return tail.includes('?:') || tail.includes('|');
 }
 
 /**
