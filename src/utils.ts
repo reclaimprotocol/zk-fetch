@@ -304,7 +304,7 @@ export function isRegexPattern(pattern: string): boolean {
     (pattern.endsWith('$') && !pattern.includes('://')) ||
     /\\[dDwWsS]/.test(pattern) ||
     hasCharacterClass(pattern) ||
-    /\{\d+,?\d*\}/.test(pattern) ||
+    hasQuantifierBraces(pattern) ||
     hasGroupFollowedByRegexSyntax(pattern)
   );
 }
@@ -325,6 +325,36 @@ function hasCharacterClass(pattern: string): boolean {
       if (open >= 0 && i > open + 1) return true;
       open = -1;
     }
+  }
+  return false;
+}
+
+/**
+ * True if `pattern` contains a `{n}`, `{n,}` or `{n,m}` quantifier.
+ * Linear-time replacement for the regex `/\{\d+,?\d*\}/`, whose adjacent
+ * `\d+` and `\d*` backtrack polynomially on long digit runs like `{999...`.
+ */
+function hasQuantifierBraces(pattern: string): boolean {
+  const isDigit = (ch: string) => ch >= '0' && ch <= '9';
+  let i = 0;
+  while (i < pattern.length) {
+    if (pattern[i] !== '{') {
+      i++;
+      continue;
+    }
+    let j = i + 1;
+    const digitsStart = j;
+    while (j < pattern.length && isDigit(pattern[j])) j++;
+    if (j > digitsStart) {
+      if (pattern[j] === ',') {
+        j++;
+        while (j < pattern.length && isDigit(pattern[j])) j++;
+      }
+      if (pattern[j] === '}') return true;
+    }
+    // Nothing between i and j can start a match except a later '{', and
+    // the scan above stopped at the first non-digit/non-comma character.
+    i = j > i + 1 ? j : i + 1;
   }
   return false;
 }

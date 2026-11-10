@@ -16,6 +16,10 @@ describe('isRegexPattern', () => {
     ['https://example.com/[a-z]+', true],
     ['https://example.com/[]', false],
     ['https://example.com/a{2,3}', true],
+    ['https://example.com/a{2}', true],
+    ['https://example.com/a{2,}', true],
+    ['https://example.com/a{,3}', false],
+    ['https://example.com/{{2}', true],
     // Existing behaviour: `|` / `?:` only count after a group closes.
     ['https://example.com/(a|b)', false],
     ['https://example.com/(a)|b', true],
@@ -43,7 +47,7 @@ describe('isRegexPattern', () => {
 
   test('runs in linear time on adversarial input (no ReDoS)', () => {
     const n = 200_000
-    const inputs = ['\\['.repeat(n), '['.repeat(n), '('.repeat(n) + ')' + 'x'.repeat(n)]
+    const inputs = ['\\['.repeat(n), '['.repeat(n), '('.repeat(n) + ')' + 'x'.repeat(n), '{{' + '9'.repeat(n), '{1,'.repeat(n)]
     const start = performance.now()
     for (const s of inputs) isRegexPattern(s)
     expect(performance.now() - start).toBeLessThan(200)
