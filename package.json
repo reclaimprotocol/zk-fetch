@@ -31,18 +31,17 @@
   "author": "madhavanmalolan",
   "license": "SEE LICENSE IN https://github.com/reclaimprotocol/zk-fetch/blob/master/LICENSE.md",
   "dependencies": {
-    "@reclaimprotocol/attestor-core": "^5.0.8",
+    "@reclaimprotocol/attestor-core": "^5.1.6",
     "@swc/core": "^1.6.13",
     "ethers": "^5.7.2",
     "pino": "^8.20.0",
-    "uuid": "^9.0.1"
+    "uuid": "^11.1.1"
   },
   "devDependencies": {
     "@types/node": "^25.8.0",
-    "@types/uuid": "^9.0.8",
     "tsup": "^8.1.0",
     "typescript": "^5.4.5",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.12"
   },
   "directories": {
     "test": "tests"
@@ -55,5 +54,10 @@
     "zk",
     "fetch",
     "reclaimprotocol"
-  ]
+  ],
+  "overrides": {
+    "ws": "^8.21.0",
+    "underscore": "^1.13.8",
+    "esbuild": "^0.28.1"
+  }
 }
