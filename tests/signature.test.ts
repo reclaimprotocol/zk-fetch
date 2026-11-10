@@ -139,19 +139,20 @@ describe('App ID & Secret Authentication', () => {
     const privateOptions = {
       responseMatches: [{
         type: 'regex' as const,
-        value: 'ethereum":{"usd":(?<price>.*?)}}',
+        value: '"title": "(?<title>[^"]*)"',
       }],
       responseRedactions: [],
     }
 
     const proof = await client.zkFetch(
-      'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd',
+      'https://jsonplaceholder.typicode.com/todos/1',
       options,
       privateOptions
     )
 
     expect(proof).toBeDefined()
     expect(proof?.claimData).toBeDefined()
+    expect(proof?.extractedParameterValues?.title).toBe('delectus aut autem')
   }, 100000)
 
 

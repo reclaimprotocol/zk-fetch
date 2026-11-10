@@ -32,9 +32,9 @@ export const generateTestSignature = async () => {
     applicationId: process.env.APP_ID!,
     applicationSecret: process.env.APP_SECRET!,
     allowedUrls: [
-      'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd',
-      'https://api.coingecko.com/*',
-      '^https://api\\.coingecko\\.com/api/v\\d+/.*$'
+      'https://jsonplaceholder.typicode.com/todos/1',
+      'https://jsonplaceholder.typicode.com/*',
+      '^https://jsonplaceholder\\.typicode\\.com/todos/\\d+$'
     ],
     expiresAt: Math.floor(Date.now() / 1000) + 3600 // 1 hour
   })
@@ -61,13 +61,13 @@ export const zkFetchWithSignature = async (signature: string) => {
   const privateOptions = {
     responseMatches: [{
       type: 'regex' as const,
-      value: 'ethereum":{"usd":(?<price>.*?)}}',
+      value: '"title": "(?<title>[^"]*)"',
     }],
     responseRedactions: [],
   }
 
   const proof = await client.zkFetch(
-    'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd',
+    'https://jsonplaceholder.typicode.com/todos/1',
     options,
     privateOptions
   )
