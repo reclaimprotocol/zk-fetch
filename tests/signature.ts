@@ -31,9 +31,9 @@ export const generateTestSignature = async () => {
   const signature = await generateSessionSignature({
     applicationId: process.env.APP_ID!,
     applicationSecret: process.env.APP_SECRET!,
+    // A single anchored, escaped regex. Exact and wildcard entries are
+    // covered by the URL Pattern Matching tests (testUrlPatterns).
     allowedUrls: [
-      'https://jsonplaceholder.typicode.com/todos/1',
-      'https://jsonplaceholder.typicode.com/*',
       '^https://jsonplaceholder\\.typicode\\.com/todos/\\d+$'
     ],
     expiresAt: Math.floor(Date.now() / 1000) + 3600 // 1 hour
