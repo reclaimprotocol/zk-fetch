@@ -302,8 +302,90 @@ export function isRegexPattern(pattern: string): boolean {
   return (
     pattern.startsWith('^') ||
     (pattern.endsWith('$') && !pattern.includes('://')) ||
-    /\\[dDwWsS]|\[([^\]])+\]|\{\d+,?\d*\}|(\([^)]*\).*(?:\?:|\|))/.test(pattern)
+    /\\[dDwWsS]/.test(pattern) ||
+    hasCharacterClass(pattern) ||
+    hasQuantifierBraces(pattern) ||
+    hasGroupFollowedByRegexSyntax(pattern)
   );
+}
+
+/**
+ * True if `pattern` contains `[`, at least one character other than `]`,
+ * then `]` -- i.e. a non-empty character class like `[a-z]`.
+ * Linear-time replacement for the regex `/\[[^\]]+\]/`, which backtracks
+ * quadratically on inputs with many `[` and no closing `]`.
+ */
+function hasCharacterClass(pattern: string): boolean {
+  let open = -1;
+  for (let i = 0; i < pattern.length; i++) {
+    const ch = pattern[i];
+    if (ch === '[') {
+      if (open < 0) open = i;
+    } else if (ch === ']') {
+      if (open >= 0 && i > open + 1) return true;
+      open = -1;
+    }
+  }
+  return false;
+}
+
+/**
+ * True if `pattern` contains a `{n}`, `{n,}` or `{n,m}` quantifier.
+ * Linear-time replacement for the regex `/\{\d+,?\d*\}/`, whose adjacent
+ * `\d+` and `\d*` backtrack polynomially on long digit runs like `{999...`.
+ */
+function hasQuantifierBraces(pattern: string): boolean {
+  const isDigit = (ch: string) => ch >= '0' && ch <= '9';
+  let i = 0;
+  while (i < pattern.length) {
+    if (pattern[i] !== '{') {
+      i++;
+      continue;
+    }
+    let j = i + 1;
+    const digitsStart = j;
+    while (j < pattern.length && isDigit(pattern[j])) j++;
+    if (j > digitsStart) {
+      if (pattern[j] === ',') {
+        j++;
+        while (j < pattern.length && isDigit(pattern[j])) j++;
+      }
+      if (pattern[j] === '}') return true;
+    }
+    // Nothing between i and j can start a match except a later '{', and
+    // the scan above stopped at the first non-digit/non-comma character.
+    i = j > i + 1 ? j : i + 1;
+  }
+  return false;
+}
+
+/**
+ * True if `pattern` has a `(...)` group followed later on the same line by
+ * `?:` or `|`. Linear-time replacement for the regex
+ * `/\([^)]*\).*(?:\?:|\|)/`: a `)` closes a group only if it is the first
+ * `)` after some `(` (the group body may span lines), and `.*` after it does
+ * not cross line terminators. Every candidate group is considered, not just
+ * the first.
+ */
+function hasGroupFollowedByRegexSyntax(pattern: string): boolean {
+  let openSinceLastClose = false; // a `(` is waiting for its first `)`
+  let afterGroupOnThisLine = false; // a group closed earlier on this line
+  for (let i = 0; i < pattern.length; i++) {
+    const ch = pattern[i];
+    if (afterGroupOnThisLine && (ch === '|' || (ch === '?' && pattern[i + 1] === ':'))) {
+      return true;
+    }
+    if (ch === '\n' || ch === '\r' || ch === '\u2028' || ch === '\u2029') {
+      afterGroupOnThisLine = false;
+    }
+    if (ch === '(') {
+      openSinceLastClose = true;
+    } else if (ch === ')' && openSinceLastClose) {
+      openSinceLastClose = false;
+      afterGroupOnThisLine = true;
+    }
+  }
+  return false;
 }
 
 /**
