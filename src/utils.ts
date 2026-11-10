@@ -360,19 +360,32 @@ function hasQuantifierBraces(pattern: string): boolean {
 }
 
 /**
- * True if `pattern` has a `(...)` group followed later by `?:` or `|`.
- * Linear-time replacement for the regex `/\([^)]*\).*(?:\?:|\|)/`: the
- * earliest `(` closes at the earliest `)`, which leaves the longest tail to
- * search, so checking only that one group is equivalent.
+ * True if `pattern` has a `(...)` group followed later on the same line by
+ * `?:` or `|`. Linear-time replacement for the regex
+ * `/\([^)]*\).*(?:\?:|\|)/`: a `)` closes a group only if it is the first
+ * `)` after some `(` (the group body may span lines), and `.*` after it does
+ * not cross line terminators. Every candidate group is considered, not just
+ * the first.
  */
 function hasGroupFollowedByRegexSyntax(pattern: string): boolean {
-  const open = pattern.indexOf('(');
-  if (open < 0) return false;
-  const close = pattern.indexOf(')', open + 1);
-  if (close < 0) return false;
-  // `.` in the original regex doesn't cross line breaks.
-  const tail = pattern.slice(close + 1).split(/[\n\r\u2028\u2029]/)[0];
-  return tail.includes('?:') || tail.includes('|');
+  let openSinceLastClose = false; // a `(` is waiting for its first `)`
+  let afterGroupOnThisLine = false; // a group closed earlier on this line
+  for (let i = 0; i < pattern.length; i++) {
+    const ch = pattern[i];
+    if (afterGroupOnThisLine && (ch === '|' || (ch === '?' && pattern[i + 1] === ':'))) {
+      return true;
+    }
+    if (ch === '\n' || ch === '\r' || ch === '\u2028' || ch === '\u2029') {
+      afterGroupOnThisLine = false;
+    }
+    if (ch === '(') {
+      openSinceLastClose = true;
+    } else if (ch === ')' && openSinceLastClose) {
+      openSinceLastClose = false;
+      afterGroupOnThisLine = true;
+    }
+  }
+  return false;
 }
 
 /**
