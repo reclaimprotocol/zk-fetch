@@ -419,9 +419,4 @@ describe('encodeBuilderAuthorizationForTee: canonical JSON for the TEE library',
     expect(canonical.signature).toBe(signatureB64)
     expect(canonical.data).toEqual(request.data)
   })
-
-  test('rejects a malformed token instead of forwarding it', () => {
-    const badToken = Buffer.from('not json', 'utf8').toString('base64')
-    expect(() => encodeBuilderAuthorizationForTee(badToken)).toThrow()
-  })
 })

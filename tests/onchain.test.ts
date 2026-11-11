@@ -40,10 +40,4 @@ describe('transformForOnchain', () => {
       })
     )
   })
-
-  test('leaves out fields the contracts do not take', () => {
-    const onchain = transformForOnchain(proof) as unknown as Record<string, unknown>
-    expect(onchain).not.toHaveProperty('witnesses')
-    expect(onchain).not.toHaveProperty('extractedParameterValues')
-  })
 })

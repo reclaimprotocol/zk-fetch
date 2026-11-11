@@ -415,14 +415,7 @@ const onchainProof = transformForOnchain(proof);
 //   signedClaim: { claim: { epoch, identifier, owner, timestampS }, signatures } }
 ```
 
-#### Moving off `@reclaimprotocol/js-sdk`
-
-`@reclaimprotocol/js-sdk` has been discontinued. Replace:
-
-| `@reclaimprotocol/js-sdk` | Use instead |
-| --- | --- |
-| `verifyProof(proof)` | `verifyRequestProof(proof, { hashes, attestorJwksUrl })` from `@reclaimprotocol/client` — see [Verify the proofs](#verify-the-proofs). It also checks that the proof covers the request you expected. |
-| `transformForOnchain(proof)` | `transformForOnchain(proof)` from `@reclaimprotocol/zk-fetch`. Same output, so contract calls don't change. |
+> `@reclaimprotocol/js-sdk` has been discontinued. Use the two replacements above instead of its `verifyProof` and `transformForOnchain`.
 
 
 ### Add Retries and Retry Interval
