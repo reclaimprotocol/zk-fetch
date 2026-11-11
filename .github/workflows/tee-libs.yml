@@ -1,0 +1,171 @@
+# Builds the libreclaim TEE library for every supported platform from a pinned
+# reclaim-tee commit, verifies each binary, and publishes them as assets of a
+# GitHub Release (tag: tee-libs-<short commit>) together with SHA256SUMS.
+#
+# zk-fetch downloads these at install time (scripts/postinstall.js) and checks
+# them against the sha256 values pinned in src/tee-manifest.ts. After a run,
+# update that manifest with:  node tools/sync-tee-manifest.js tee-libs-<short commit>
+#
+# Every target builds on a native runner: the zk-symmetric-crypto prover needs
+# cgo, so cross-compiling would need a cross C toolchain per target.
+name: tee-libs
+
+on:
+  workflow_dispatch:
+    inputs:
+      reclaim_tee_ref:
+        description: "reclaim-tee commit SHA to build (full 40-char SHA)"
+        required: true
+      publish:
+        description: "Publish a GitHub Release (false = build and verify only)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  RECLAIM_TEE_REPO: reclaimprotocol/reclaim-tee
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: linux-x64,    runner: ubuntu-latest,    goarch: amd64, ext: so,    image: quay.io/pypa/manylinux2014_x86_64 }
+          - { platform: linux-arm64,  runner: ubuntu-24.04-arm, goarch: arm64, ext: so,    image: quay.io/pypa/manylinux2014_aarch64 }
+          - { platform: darwin-arm64, runner: macos-latest,     goarch: arm64, ext: dylib, cc: clang -arch arm64 }
+          # Cross-built on the arm64 runner: Apple clang targets x86_64 with no extra toolchain.
+          - { platform: darwin-x64,   runner: macos-latest,     goarch: amd64, ext: dylib, cc: clang -arch x86_64 }
+          - { platform: win32-x64,    runner: windows-latest,   goarch: amd64, ext: dll }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    env:
+      OUT: libreclaim-${{ matrix.platform }}.${{ matrix.ext }}
+    steps:
+      - name: Check out zk-fetch (for tools/)
+        uses: actions/checkout@v4
+        with:
+          path: zk-fetch
+
+      - name: Check out reclaim-tee
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.RECLAIM_TEE_REPO }}
+          ref: ${{ inputs.reclaim_tee_ref }}
+          path: reclaim-tee
+
+      - name: Read Go version
+        id: go
+        shell: bash
+        run: echo "version=$(awk '$1=="go"{print $2; exit}' reclaim-tee/go.mod)" >> "$GITHUB_OUTPUT"
+
+      # Builds on macOS/Windows; on Linux only used by the verify step (`go version -m`).
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ steps.go.outputs.version }}
+          cache: false
+
+      # Linux: build inside manylinux2014 (glibc 2.17) so the library loads on
+      # older distros. Run it with `docker run`: GitHub's own actions can't run
+      # inside a `container:` this old.
+      - name: Build (Linux, manylinux2014)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          docker run --rm -v "$PWD/reclaim-tee:/src" -w /src \
+            -e GO_VERSION=${{ steps.go.outputs.version }} -e GOARCH=${{ matrix.goarch }} -e OUT="$OUT" \
+            ${{ matrix.image }} bash -euo pipefail -c '
+              curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${GOARCH}.tar.gz" | tar -C /usr/local -xz
+              export PATH=/usr/local/go/bin:$PATH CGO_ENABLED=1 GOTOOLCHAIN=local GOFLAGS=-buildvcs=false
+              go build -buildmode=c-shared -trimpath -ldflags="-s -w" -o "/src/$OUT" ./lib'
+          sudo chown "$(id -u)" "reclaim-tee/$OUT"
+
+      - name: Build (macOS, deployment target 13.0)
+        if: runner.os == 'macOS'
+        shell: bash
+        working-directory: reclaim-tee
+        env:
+          CGO_ENABLED: "1"
+          GOARCH: ${{ matrix.goarch }}
+          CC: ${{ matrix.cc }} -mmacosx-version-min=13.0
+          CGO_LDFLAGS: -mmacosx-version-min=13.0
+          MACOSX_DEPLOYMENT_TARGET: "13.0"
+        run: go build -buildmode=c-shared -trimpath -ldflags="-s -w" -o "$OUT" ./lib
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        working-directory: reclaim-tee
+        env:
+          CGO_ENABLED: "1"
+          GOARCH: ${{ matrix.goarch }}
+        run: go build -buildmode=c-shared -trimpath -ldflags="-s -w" -o "$OUT" ./lib
+
+      - name: Verify binary
+        shell: bash
+        working-directory: reclaim-tee
+        run: |
+          set -euo pipefail
+          ls -l "$OUT"
+          # Built for the right architecture from the requested commit.
+          arch=$(go version -m "$OUT" | awk '$1=="build" && $2 ~ /^GOARCH=/ {split($2,a,"="); print a[2]}')
+          [ "$arch" = "${{ matrix.goarch }}" ] || { echo "expected GOARCH=${{ matrix.goarch }}, got $arch"; exit 1; }
+          case "${{ runner.os }}" in
+            Linux)
+              max=$(strings "$OUT" | grep -oE '^GLIBC_[0-9.]+' | sort -t. -k2,2n -k3,3n -u | tail -1)
+              echo "max glibc symbol: $max"
+              [ "$(printf '%s\nGLIBC_2.17\n' "$max" | sort -t. -k2,2n -k3,3n | tail -1)" = "GLIBC_2.17" ] || { echo "requires newer glibc than 2.17"; exit 1; } ;;
+            macOS)
+              minos=$(otool -l "$OUT" | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $2; exit}')
+              echo "minos: $minos"
+              [ "$minos" = "13.0" ] || { echo "expected minos 13.0"; exit 1; } ;;
+          esac
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Load the library through koffi and call an exported function, the same
+      # way zk-fetch does. darwin-x64 is cross-built and can't load on the arm64 runner.
+      - name: Load test
+        if: matrix.platform != 'darwin-x64'
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/loadtest" && cd "$RUNNER_TEMP/loadtest"
+          npm init -y >/dev/null && npm install --no-save --no-audit --no-fund koffi@2.16.3 >/dev/null
+          NODE_PATH="$PWD/node_modules" node "$GITHUB_WORKSPACE/zk-fetch/tools/check-tee-lib.js" "$GITHUB_WORKSPACE/reclaim-tee/$OUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}
+          path: reclaim-tee/${{ env.OUT }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: ${{ inputs.publish }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ inputs.reclaim_tee_ref }}
+        run: |
+          set -euo pipefail
+          cd artifacts
+          sha256sum libreclaim-* | tee SHA256SUMS
+          tag="tee-libs-${REF:0:7}"
+          printf 'libreclaim built from %s@%s by run %s.\n\nUpdate zk-fetch with: node tools/sync-tee-manifest.js %s\n' \
+            "$RECLAIM_TEE_REPO" "$REF" "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" "$tag" > notes.md
+          gh release create "$tag" libreclaim-* SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --title "$tag" --notes-file notes.md --target "$GITHUB_SHA"

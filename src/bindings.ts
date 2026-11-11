@@ -1,6 +1,6 @@
 import koffi from 'koffi';
-import path from 'path';
 import { ReclaimError, AlgorithmID } from './interfaces';
+import { getVerifiedTeeLibraryPath } from './tee-library';
 
 // Define GoSlice struct for passing byte arrays to Go
 const GoSlice = koffi.struct('GoSlice', {
@@ -20,54 +20,19 @@ let _reclaim_get_version: koffi.KoffiFunction | null = null;
 let _init_algorithm: koffi.KoffiFunction | null = null;
 
 /**
- * Get the platform and architecture-specific library path
- */
-function getDefaultLibraryPath(): string {
-  const arch = process.arch;
-  const platform = process.platform;
-
-  // Map Node.js arch to Go arch naming
-  let archDir: string;
-  switch (arch) {
-    case 'x64':
-      archDir = 'amd64';
-      break;
-    case 'arm64':
-      archDir = 'arm64';
-      break;
-    default:
-      throw new Error(`Unsupported architecture: ${arch}`);
-  }
-
-  // Map Node.js platform to library extension and directory
-  let platformDir: string;
-  let libExt: string;
-  switch (platform) {
-    case 'darwin':
-      platformDir = 'darwin';
-      libExt = 'dylib';
-      break;
-    case 'linux':
-      platformDir = 'linux';
-      libExt = 'so';
-      break;
-    default:
-      throw new Error(`Unsupported platform: ${platform}. Only macOS and Linux are supported (Windows is not supported due to TEE/Nitro Enclave dependencies).`);
-  }
-
-  return path.resolve(__dirname, '..', 'lib', platformDir, archDir, `libreclaim.${libExt}`);
-}
-
-/**
  * Load the libreclaim shared library
- * @param libraryPath - Path to libreclaim.so (optional, auto-detects architecture if not provided)
+ * @param libraryPath - Path to libreclaim (optional). Defaults to the verified
+ *   download from ensureTeeLibrary(), which must have completed first.
  */
 export function loadLibrary(libraryPath?: string): void {
   if (lib) {
     return; // Already loaded
   }
 
-  const libPath = libraryPath || getDefaultLibraryPath();
+  const libPath = libraryPath || getVerifiedTeeLibraryPath();
+  if (!libPath) {
+    throw new Error('TEE library not downloaded yet. Call ensureTeeLibrary() before loadLibrary().');
+  }
 
   lib = koffi.load(libPath);
 

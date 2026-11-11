@@ -6,12 +6,12 @@
   "types": "./dist/index.d.ts",
   "files": [
     "dist",
-    "scripts",
-    "lib"
+    "scripts"
   ],
   "tsup": {
     "entry": [
-      "src/index.ts"
+      "src/index.ts",
+      "src/tee-library.ts"
     ],
     "splitting": false,
     "sourcemap": true,
@@ -25,6 +25,7 @@
   },
   "scripts": {
     "build": "sh build.sh",
+    "postinstall": "node scripts/postinstall.js",
     "download:circuits": "node node_modules/@reclaimprotocol/zk-symmetric-crypto/lib/scripts/download-files",
     "test": "vitest"
   },
