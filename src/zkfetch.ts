@@ -28,6 +28,7 @@ import P from "pino";
 import { verifySessionSignature } from "./signature";
 import { InvalidParamError } from "./errors";
 import { ReclaimSDK } from "./tee";
+import { ensureTeeLibrary } from "./tee-library";
 import { ATTESTOR_NODE_URL, BUILDER_BASE_URL } from "./constants";
 const logger = P();
 
@@ -226,9 +227,12 @@ export class ReclaimClient {
           'Builder mode does not support useTee yet; use the standard (non-TEE) zkFetch path.'
         );
       }
-      // Lazy-initialize TEE SDK if not already initialized
+      // Lazy-initialize TEE SDK if not already initialized. The native library
+      // is normally downloaded at install time; this downloads and verifies it
+      // if that was skipped.
       if (!this.teeSDK) {
-        this.teeSDK = new ReclaimSDK();
+        const libraryPath = await ensureTeeLibrary();
+        this.teeSDK = new ReclaimSDK(libraryPath);
         this.teeSDK.init();
       }
       return await this.zkFetchWithTee(url, sessionId, options, secretOptions, retries, retryInterval);

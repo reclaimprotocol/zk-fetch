@@ -13,16 +13,19 @@ Key features:
 - Built on [Reclaim Protocol](https://reclaimprotocol.org)
 
 
+> **Using an application ID and secret from the Reclaim Devtool?** That legacy auth mode is deprecated and will be removed in a future release. Please move to [Reclaim Builder](https://build.reclaimprotocol.org) and an organization token — see [Migrating from Devtool to Builder](#migrating-from-devtool-to-builder).
+
 ## Installation
 
 ```bash
 npm install @reclaimprotocol/zk-fetch
 ```
 
-## Prerequisites
+## Requirements
 
-- Node.js version 18 or higher
-- An application ID and secret from the [Reclaim Developer Portal](https://dev.reclaimprotocol.org/)
+- **Node.js 22 or higher.** Server-side only — zkFetch runs in Node.js, not in the browser.
+- **A Reclaim Builder organization token** (`rorg_...`) from [Reclaim Builder](https://build.reclaimprotocol.org). Treat it like a password: keep it on your server, never in frontend code.
+- **For TEE mode only:** macOS 13+ (x64 or arm64), Linux with glibc 2.17+ (x64 or arm64), or Windows (x64). Alpine/musl Linux isn't supported yet. In slim Docker images, install the system CA certificates (for example `apt-get install -y ca-certificates`), or TEE requests will fail TLS verification.
 
 
 ## Quick Start
@@ -30,8 +33,8 @@ npm install @reclaimprotocol/zk-fetch
 ```javascript
 const { ReclaimClient } = require("@reclaimprotocol/zk-fetch");
 
-// Initialize client
-const client = new ReclaimClient('APPLICATION_ID', 'APPLICATION_SECRET');
+// Initialize the client with your Builder organization token
+const client = new ReclaimClient({ orgToken: process.env.RECLAIM_ORG_TOKEN });
 
 // Make a verified request
 const proof = await client.zkFetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd', {
@@ -44,23 +47,77 @@ const proof = await client.zkFetch('https://api.coingecko.com/api/v3/simple/pric
     type: 'regex',
     value: 'ethereum":{"usd":(?<price>.*?)}}',
   }],
-  responseRedactions: [{ regex: 'ethereum":{"usd":(?<price>.*?)}}'}],  
+  responseRedactions: [{ regex: 'ethereum":{"usd":(?<price>.*?)}}'}],
 });
 ```
 
 
-## Authentication Methods
+## Authentication
 
-zkFetch supports two authentication modes depending on where you're running the code:
+### Builder Mode (Organization Token)
 
-### Backend Mode (Direct Secret)
-
-Use this when running on a secure server (Node.js backend). Your application secret stays safe on the server.
+Builder is the supported way to authenticate zkFetch. Instead of an application id/secret, the client holds a Builder organization token (`rorg_...`) and asks [Reclaim Builder](https://build.reclaimprotocol.org) to authorize each `zkFetch` call, drawing down your org's `ZKFETCH` quota.
 
 ```javascript
 const { ReclaimClient } = require('@reclaimprotocol/zk-fetch');
 
-// Backend only - never expose secret in frontend!
+const client = new ReclaimClient({
+  orgToken: 'rorg_...',              // your Builder organization token
+  builderBaseUrl: undefined,          // optional, defaults to https://build.reclaimprotocol.org
+});
+
+const proof = await client.zkFetch('https://api.github.com/user', {
+  method: 'GET',
+  headers: { Authorization: 'Bearer <github token>' },
+});
+```
+
+Every call asks Builder for a short-lived, single-use authorization for the request's target host immediately before connecting to the attestor -- it is never requested ahead of time or reused across calls. The response includes an attestor token only when Builder has an attestor signing key configured; otherwise the token is omitted and the client connects to the attestor without one. Either way, the call counts against your quota. This is what actually meters zkFetch against your Builder plan; the fetch and the proof itself still happen entirely in your own process.
+
+If your org's `ZKFETCH` quota is exhausted, Builder rejects the authorization and the call rejects with a `BuilderQuotaExceededError` (a subclass of `BuilderAuthorizationError`) instead of a generic error, so you can catch it specifically:
+
+```javascript
+const { ReclaimClient, BuilderQuotaExceededError } = require('@reclaimprotocol/zk-fetch');
+
+try {
+  const proof = await client.zkFetch('https://api.github.com/user', { method: 'GET' });
+} catch (error) {
+  if (error instanceof BuilderQuotaExceededError) {
+    // error.status is 402 or 429
+    console.error('Out of zkFetch quota for this billing period');
+  } else {
+    throw error;
+  }
+}
+```
+
+> Builder mode does not currently support `useTee: true`; it only covers the standard (non-TEE) `zkFetch` path.
+
+### Migrating from Devtool to Builder
+
+1. Create an organization in [Reclaim Builder](https://build.reclaimprotocol.org) and issue an organization token (`rorg_...`).
+2. Replace the application id/secret with the token. Everything else — `zkFetch` options, response matches, redactions and the proof format — stays the same:
+
+```javascript
+// Before (Devtool, deprecated)
+const client = new ReclaimClient('APPLICATION_ID', 'APPLICATION_SECRET', logs, retries);
+
+// After (Builder)
+const client = new ReclaimClient({ orgToken: process.env.RECLAIM_ORG_TOKEN, logs, retries });
+```
+
+3. If you used `generateSessionSignature` to hand signatures to an untrusted client, move those `zkFetch` calls to your server instead. Builder org tokens must stay server-side.
+
+### Legacy: Devtool Application ID and Secret (deprecated)
+
+> **Deprecated.** This mode still works in 2.x, but it will be removed in a future release. New integrations should use [Builder mode](#builder-mode-organization-token).
+
+#### Direct secret
+
+```javascript
+const { ReclaimClient } = require('@reclaimprotocol/zk-fetch');
+
+// Server only - never expose the secret in frontend code
 const client = new ReclaimClient('APPLICATION_ID', 'APPLICATION_SECRET');
 
 const proof = await client.zkFetch('https://api.example.com/data', {
@@ -68,9 +125,9 @@ const proof = await client.zkFetch('https://api.example.com/data', {
 });
 ```
 
-### Frontend Mode (Signature-Based)
+#### Session signature
 
-Use this for browsers or untrusted environments. Your application secret never leaves your backend.
+A signature lets a less-trusted process make `zkFetch` calls without holding your application secret. It still requires a Node.js 22+ runtime.
 
 **Step 1: Generate signature on your backend**
 
@@ -94,16 +151,16 @@ app.post('/api/get-signature', async (req, res) => {
 });
 ```
 
-**Step 2: Use signature in your frontend**
+**Step 2: Use the signature in the less-trusted process**
 
 ```javascript
 const { ReclaimClient } = require('@reclaimprotocol/zk-fetch');
 
 // Fetch signature from your backend
-const response = await fetch('/api/get-signature');
+const response = await fetch('https://your-backend.example.com/api/get-signature', { method: 'POST' });
 const { signature } = await response.json();
 
-// Initialize with signature - safe for frontend!
+// Initialize with the signature instead of the secret
 const client = new ReclaimClient(
   'APPLICATION_ID',
   signature
@@ -120,71 +177,38 @@ const proof = await client.zkFetch(
 - Time-limited (default 1 hour, max 72 hours)
 - URL-restricted via allowlist (exact, wildcard, or regex patterns)
 - Cryptographically signed (ECDSA)
-- No secrets exposed to frontend
+- The application secret stays on your backend
 
 **URL Pattern Examples:**
 - `'https://api.example.com/data'` - Exact match only
 - `'https://api.example.com/*'` - All paths under domain
 - `'^https://api\\.example\\.com/user/\\d+$'` - Regex pattern for dynamic URLs
 
-### Builder Mode (Organization Token)
-
-Use this if you manage your zkFetch usage through [Reclaim Builder](https://build.reclaimprotocol.org). Instead of an application id/secret, the client holds a Builder organization token (`rorg_...`) and asks Builder to authorize each `zkFetch` call, drawing down your org's `ZKFETCH` quota.
-
-```javascript
-const { ReclaimClient } = require('@reclaimprotocol/zk-fetch');
-
-const client = new ReclaimClient({
-  orgToken: 'rorg_...',              // your Builder organization token
-  builderBaseUrl: undefined,          // optional, defaults to https://build.reclaimprotocol.org
-});
-
-const proof = await client.zkFetch('https://api.github.com/user', {
-  method: 'GET',
-  headers: { Authorization: 'Bearer <github token>' },
-});
-```
-
-Every call asks Builder for a short-lived, single-use authorization for the request's target host immediately before connecting to the attestor -- it is never requested ahead of time or reused across calls. The response includes an attestor token only when Builder has an attestor signing key configured; otherwise the token is omitted and the client connects to the attestor without one. Either way, the call counts against your quota. This is what actually meters zkFetch against your Builder plan; the fetch and the proof itself still happen entirely in your own process, exactly as in the other modes.
-
-If your org's `ZKFETCH` quota is exhausted, Builder rejects the authorization and the call rejects with a `BuilderQuotaExceededError` (a subclass of `BuilderAuthorizationError`) instead of a generic error, so you can catch it specifically:
-
-```javascript
-const { ReclaimClient, BuilderQuotaExceededError } = require('@reclaimprotocol/zk-fetch');
-
-try {
-  const proof = await client.zkFetch('https://api.github.com/user', { method: 'GET' });
-} catch (error) {
-  if (error instanceof BuilderQuotaExceededError) {
-    // error.status is 402 or 429
-    console.error('Out of zkFetch quota for this billing period');
-  } else {
-    throw error;
-  }
-}
-```
-
-> Builder mode does not currently support `useTee: true`; it only covers the standard (non-TEE) `zkFetch` path.
-
 ## Client Configuration
 
-The constructor accepts two optional arguments after the credentials:
+Builder mode takes a single options object:
 
 ```javascript
-new ReclaimClient(applicationId, applicationSecret, logs?, retries?)
+new ReclaimClient({ orgToken, builderBaseUrl?, logs?, retries? })
 ```
 
-| Argument | Type | Default | Description |
+| Option | Type | Default | Description |
 | --- | --- | --- | --- |
+| `orgToken` | `string` | — | Your Builder organization token (`rorg_...`). Required. |
+| `builderBaseUrl` | `string` | `https://build.reclaimprotocol.org` | Builder API base URL. |
 | `logs` | `boolean` | `false` | Enable internal logging. |
 | `retries` | `number` | `1` | Default number of attempts for every `zkFetch` call that doesn't pass its own `retries`. Must be a positive integer. |
 
 ```javascript
 // logs enabled, and every zkFetch defaults to 3 attempts
-const client = new ReclaimClient('APPLICATION_ID', 'APPLICATION_SECRET', true, 3);
+const client = new ReclaimClient({ orgToken: process.env.RECLAIM_ORG_TOKEN, logs: true, retries: 3 });
 ```
 
+The deprecated Devtool form takes the same `logs` and `retries` as positional arguments: `new ReclaimClient(applicationId, applicationSecret, logs?, retries?)`.
+
 ### Using TEE Mode
+
+> TEE mode currently requires the deprecated Devtool credentials: Builder mode doesn't support `useTee: true` yet. See [Requirements](#requirements) for supported platforms.
 
 TEE (Trusted Execution Environment) mode can be enabled per-request by setting `useTee: true` in the options:
 
@@ -194,6 +218,18 @@ const proof = await client.zkFetch('https://api.example.com/data', {
   useTee: true  // Enable TEE mode for this specific request
 });
 ```
+
+#### The TEE library download
+
+TEE mode runs through a native library (`libreclaim`) that isn't bundled in the npm package. `npm install` downloads the one for your platform (about 30–40 MB) from this repo's [GitHub Releases](https://github.com/reclaimprotocol/zk-fetch/releases) and checks it against a sha256 pinned in the package; a file that doesn't match is never loaded. If the download was skipped (for example `npm install --ignore-scripts`) or failed, the first `useTee: true` request downloads it instead. It's stored in the package's `lib/` folder, or in your user cache folder if `node_modules` is read-only.
+
+| Environment variable | Effect |
+| --- | --- |
+| `RECLAIM_TEE_SKIP_DOWNLOAD=1` | Skip the download during `npm install`. |
+| `RECLAIM_TEE_LIB_BASE_URL` | Download from a mirror instead of GitHub Releases. The sha256 check still applies. |
+| `RECLAIM_TEE_LIB_PATH` | Load this file and never download. For offline or locked-down machines; you're responsible for verifying the file. |
+
+Non-TEE requests never need the library.
 
 ### Choosing the ZK Engine (non-TEE)
 
@@ -261,7 +297,7 @@ This is useful when
   }
 
   const privateOptions = {
-    headers {
+    headers: {
         apiKey: "123...456",
         someOtherHeader: "someOtherValue",
     }
@@ -455,7 +491,7 @@ You can add retries and a retry interval to the fetch request. The per-call defa
   }
 
   const privateOptions = {
-    headers {
+    headers: {
         apiKey: "123...456",
         someOtherHeader: "someOtherValue",
     }
@@ -483,7 +519,7 @@ Note: The geoLocation should be a two-letter ISO country code, for example, 'US'
     method: 'GET', // or POST
     headers : {
       accept: 'application/json, text/plain, */*' 
-    }
+    },
     // geoLocation should be a two-letter ISO country code, e.g., 'US' for the United States
     geoLocation: 'US'
   }
