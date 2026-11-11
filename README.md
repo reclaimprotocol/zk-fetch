@@ -82,7 +82,7 @@ const proof = await client.zkFetch('https://api.github.com/user', {
 
 Every call asks Builder for a short-lived, single-use authorization for the request's target host immediately before connecting to the attestor -- it is never requested ahead of time or reused across calls. The response includes an attestor token only when Builder has an attestor signing key configured; otherwise the token is omitted and the client connects to the attestor without one. Either way, the call counts against your quota. This is what actually meters zkFetch against your Builder plan; the fetch and the proof itself still happen entirely in your own process.
 
-If your org's `ZKFETCH` quota is exhausted, Builder rejects the authorization and the call rejects with a `BuilderQuotaExceededError` (a subclass of `BuilderAuthorizationError`) instead of a generic error, so you can catch it specifically:
+If your org's `ZKFETCH` quota is exhausted, Builder rejects the authorization and the call rejects with a `BuilderQuotaExceededError` (a subclass of `BuilderAuthorizationError`) instead of a generic error, so you can catch it specifically. Its `message` explains the refusal, and `billingUrl` links to your organization's billing page in Builder, where you upgrade the plan or add credits:
 
 ```javascript
 const { ReclaimClient, BuilderQuotaExceededError } = require('@reclaimprotocol/zk-fetch');
@@ -92,7 +92,7 @@ try {
 } catch (error) {
   if (error instanceof BuilderQuotaExceededError) {
     // error.status is 402 or 429
-    console.error('Out of zkFetch quota for this billing period');
+    console.error(`Out of zkFetch quota. Upgrade or add credits at ${error.billingUrl}`);
   } else {
     throw error;
   }

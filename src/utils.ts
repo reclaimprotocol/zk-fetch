@@ -607,7 +607,19 @@ export async function requestBuilderAuthorization(
   }
 
   if (response.status === 402 || response.status === 429) {
-    throw new BuilderQuotaExceededError(response.status);
+    // Builder's problem body explains the refusal and links to the org's
+    // billing page. Fall back to a generic message if it can't be read.
+    let problem: { detail?: unknown; billingUrl?: unknown } = {};
+    try {
+      problem = await response.json();
+    } catch {
+      // ignore -- fall through with the generic message
+    }
+    throw new BuilderQuotaExceededError(
+      response.status,
+      typeof problem?.detail === 'string' ? problem.detail : undefined,
+      typeof problem?.billingUrl === 'string' ? problem.billingUrl : undefined
+    );
   }
 
   if (response.status === 401) {

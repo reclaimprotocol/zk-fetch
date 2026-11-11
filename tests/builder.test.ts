@@ -302,6 +302,24 @@ describe('Builder-mode zkFetch: quota exhaustion', () => {
     expect(createClaimOnAttestorMock).not.toHaveBeenCalled()
   })
 
+  test('a quota refusal carries Builder\'s detail and billing link', async () => {
+    const billingUrl = 'https://build.reclaimprotocol.org/orgs/org-1?tab=billing'
+    const detail = `ZKFETCH limit reached for the current billing period. Upgrade the organization's plan at ${billingUrl}`
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/fetch/authorizations')) {
+        return { ok: false, status: 429, json: async () => ({ status: 429, detail, billingUrl }), text: async () => '' } as Response
+      }
+      return { ok: true, status: 200, json: async () => [], text: async () => '[]' } as Response
+    })
+
+    const client = new ReclaimClient({ orgToken: ORG_TOKEN, builderBaseUrl: BUILDER_BASE_URL })
+
+    await expect(
+      client.zkFetch('https://api.github.com/user', { method: 'GET', useTee: false })
+    ).rejects.toMatchObject({ name: 'BuilderQuotaExceededError', status: 429, message: detail, billingUrl })
+  })
+
   test('a 402 from Builder also surfaces as BuilderQuotaExceededError', async () => {
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input)
