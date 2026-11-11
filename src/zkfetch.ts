@@ -177,6 +177,11 @@ export class ReclaimClient {
     retryInterval = 1000
   ) {
     validateURL(url, "zkFetch");
+    // Checked before either path runs, so a bad value never reaches Builder
+    // (which would issue, and charge for, an authorization).
+    if (!Number.isInteger(retries) || retries < 1) {
+      throw new InvalidParamError('retries must be a positive integer');
+    }
     if (options !== undefined) {
       assertCorrectnessOfOptions(options);
     }
@@ -322,6 +327,10 @@ export class ReclaimClient {
         await new Promise((resolve) => setTimeout(resolve, retryInterval));
       }
     }
+
+    // Unreachable: retries >= 1 is checked above and every attempt returns or
+    // throws. Kept so zkFetch is typed Promise<Proof>.
+    throw new InvalidParamError('retries must be a positive integer');
   }
 
   /**
