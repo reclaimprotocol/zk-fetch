@@ -47,7 +47,7 @@ export interface secretOptions {
    *  Optional `hash` swaps the plain redaction for an OPRF commitment, so
    *  `extractedParameterValues.<name>` returns the hash string instead of
    *  the plaintext value:
-   *   - 'oprf-mpc' — TEE path (the default); computed by the TEEs with MPC.
+   *   - 'oprf-mpc' — TEE path only (the default); computed by the TEEs with MPC.
    *   - 'oprf-raw' — non-TEE path only; keeps the request off TEE.
    *   - 'oprf'     — deprecated alias for 'oprf-mpc' on the TEE path. */
   responseRedactions?: { regex?: string, jsonPath?: string, xPath?: string, hash?: 'oprf-mpc' | 'oprf-raw' | 'oprf' }[];

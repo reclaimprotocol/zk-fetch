@@ -316,9 +316,9 @@ You can also use responseMatches and responseRedactions to match and redact the 
         // Optional: replace the matched span with an OPRF commitment instead
         // of a plain redaction byte. When set, `extractedParameterValues.<name>`
         // returns the OPRF hash string (not the plaintext).
-        //   'oprf-mpc' — TEE path (the default); computed by the TEEs with MPC
+        //   'oprf-mpc' — TEE path only (the default); computed by the TEEs with MPC
         //   'oprf-raw' — non-TEE path only; keeps the request off TEE
-        //   'oprf'     — deprecated; treated as 'oprf-mpc'
+        //   'oprf'     — deprecated; treated as 'oprf-mpc' (TEE path only)
         hash: 'oprf-mpc' // 'oprf-mpc' | 'oprf-raw'
       }
     ]

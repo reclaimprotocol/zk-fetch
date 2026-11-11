@@ -211,6 +211,21 @@ export class ReclaimClient {
       throw new InvalidParamError('No authentication method available');
     }
 
+    // TEE is the default; see resolveUseTee for when a call stays on the non-TEE path.
+    const useTee = resolveUseTee(options, secretOptions, isTeePlatformSupported());
+    // Only the TEEs compute 'oprf-mpc' (and its deprecated alias 'oprf'). Reject
+    // it here rather than fail deep in the non-TEE prover after Builder has
+    // issued (and charged for) an authorization.
+    const teeOnlyHash = useTee ? undefined : secretOptions?.responseRedactions?.find(
+      (redaction) => redaction.hash === 'oprf-mpc' || redaction.hash === 'oprf'
+    )?.hash;
+    if (teeOnlyHash) {
+      throw new InvalidParamError(
+        `The '${teeOnlyHash}' redaction hash needs the TEE path. Remove useTee: false and zkEngine, ` +
+        "or use 'oprf-raw' for the non-TEE path."
+      );
+    }
+
     // Generate a fresh session id for THIS verification. Reusing the client
     // instance must not reuse the session id across proofs.
     const sessionId = v4().toString();
@@ -227,8 +242,7 @@ export class ReclaimClient {
       });
     }
 
-    // TEE is the default; see resolveUseTee for when a call stays on the non-TEE path.
-    if (resolveUseTee(options, secretOptions, isTeePlatformSupported())) {
+    if (useTee) {
       // Lazy-initialize TEE SDK if not already initialized. The native library
       // is normally downloaded at install time; this downloads and verifies it
       // if that was skipped.

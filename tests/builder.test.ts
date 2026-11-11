@@ -120,6 +120,22 @@ describe('Builder mode construction', () => {
     expect(fetchMock).not.toHaveBeenCalled()
     expect(createClaimOnAttestorMock).not.toHaveBeenCalled()
   })
+
+  test("'oprf-mpc' and 'oprf' off the TEE path reject before asking Builder", async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const client = new ReclaimClient({ orgToken: ORG_TOKEN, builderBaseUrl: BUILDER_BASE_URL })
+    for (const hash of ['oprf-mpc', 'oprf'] as const) {
+      const secret = { responseRedactions: [{ regex: 'a', hash }] }
+      for (const options of [{ method: 'GET', useTee: false }, { method: 'GET', zkEngine: 'stwo' as const }]) {
+        await expect(
+          client.zkFetch('https://api.github.com/user', options, secret)
+        ).rejects.toThrow(`The '${hash}' redaction hash needs the TEE path`)
+      }
+    }
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(createClaimOnAttestorMock).not.toHaveBeenCalled()
+  })
 })
 
 describe('Builder-mode zkFetch: successful authorization flows into a proof attempt', () => {
