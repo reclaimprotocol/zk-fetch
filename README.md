@@ -25,7 +25,15 @@ npm install @reclaimprotocol/zk-fetch
 
 - **Node.js 22 or higher.** Server-side only — zkFetch runs in Node.js, not in the browser.
 - **A Reclaim Builder organization token** (`rorg_...`) from [Reclaim Builder](https://build.reclaimprotocol.org). Treat it like a password: keep it on your server, never in frontend code.
-- **For TEE mode only:** macOS 13+ (x64 or arm64), Linux with glibc 2.17+ (x64 or arm64), or Windows (x64). Alpine/musl Linux isn't supported yet. In slim Docker images, install the system CA certificates (for example `apt-get install -y ca-certificates`), or TEE requests will fail TLS verification.
+- **For TEE mode only**, one of these platforms:
+
+  | OS | Architectures | Minimum version |
+  | --- | --- | --- |
+  | macOS | x64, arm64 | macOS 13 |
+  | Linux (glibc) | x64, arm64 | glibc 2.17 |
+  | Windows | x64 | Windows 10 |
+
+  Alpine/musl Linux isn't supported yet. In slim Docker images, install the system CA certificates (for example `apt-get install -y ca-certificates`), or TEE requests will fail TLS verification.
 
 
 ## Quick Start
