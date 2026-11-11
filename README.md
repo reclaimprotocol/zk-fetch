@@ -33,7 +33,7 @@ npm install @reclaimprotocol/zk-fetch
   | Linux (glibc) | x64, arm64 | glibc 2.17 |
   | Windows | x64 | Windows 10 |
 
-  Alpine/musl Linux isn't supported yet. In slim Docker images, install the system CA certificates (for example `apt-get install -y ca-certificates`), or TEE requests will fail TLS verification.
+  In slim Docker images, install the system CA certificates (for example `apt-get install -y ca-certificates`), or TEE requests will fail TLS verification.
 
 
 ## Quick Start
