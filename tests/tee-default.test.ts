@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest'
-import { resolveUseTee } from '../src/tee-default'
+import { resolveUseTee, teeRedactions } from '../src/tee-default'
 
 const GET = { method: 'GET' }
 
@@ -33,5 +33,27 @@ describe('resolveUseTee: TEE is the default', () => {
 
   test('stays on the non-TEE path where no TEE library is published', () => {
     expect(resolveUseTee(GET, undefined, false)).toBe(false)
+  })
+})
+
+describe("teeRedactions: deprecated 'oprf' hash", () => {
+  test("sends 'oprf' to the TEE as 'oprf-mpc' and leaves other redactions unchanged", () => {
+    expect(teeRedactions([
+      { regex: 'a', hash: 'oprf' },
+      { regex: 'b', hash: 'oprf-mpc' },
+      { jsonPath: '$.c' },
+    ])).toEqual([
+      { regex: 'a', hash: 'oprf-mpc' },
+      { regex: 'b', hash: 'oprf-mpc' },
+      { jsonPath: '$.c' },
+    ])
+  })
+
+  test('treats missing redactions as none', () => {
+    expect(teeRedactions(undefined)).toEqual([])
+  })
+
+  test("keeps an 'oprf' request on the TEE path", () => {
+    expect(resolveUseTee(GET, { responseRedactions: [{ regex: 'a', hash: 'oprf' }] }, true)).toBe(true)
   })
 })

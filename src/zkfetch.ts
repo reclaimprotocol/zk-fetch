@@ -30,7 +30,7 @@ import { verifySessionSignature } from "./signature";
 import { BuilderAuthorizationError, InvalidParamError } from "./errors";
 import { ReclaimSDK } from "./tee";
 import { ensureTeeLibrary, isTeePlatformSupported } from "./tee-library";
-import { resolveUseTee } from "./tee-default";
+import { resolveUseTee, teeRedactions } from "./tee-default";
 import { ATTESTOR_NODE_URL, BUILDER_BASE_URL } from "./constants";
 const logger = P();
 
@@ -360,7 +360,7 @@ export class ReclaimClient {
             value: "(?<data>.*)",
           },
         ],
-        responseRedactions: secretOptions?.responseRedactions || [],
+        responseRedactions: teeRedactions(secretOptions?.responseRedactions),
         body: options?.body || "",
         paramValues: options?.paramValues || {},
         geoLocation: options?.geoLocation,

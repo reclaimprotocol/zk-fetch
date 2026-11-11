@@ -25,3 +25,16 @@ export function resolveUseTee(
   }
   return teePlatformSupported;
 }
+
+type Redactions = NonNullable<secretOptions['responseRedactions']>;
+
+/**
+ * Redactions as sent to the TEE library. The deprecated 'oprf' hash becomes
+ * 'oprf-mpc': zk-fetch never loaded the circuits 'oprf' needs on the TEE
+ * path, so it couldn't produce a proof, and 'oprf-mpc' is the TEE's OPRF hash.
+ */
+export function teeRedactions(redactions: secretOptions['responseRedactions']): Redactions {
+  return (redactions || []).map((redaction) =>
+    redaction.hash === 'oprf' ? { ...redaction, hash: 'oprf-mpc' as const } : redaction
+  );
+}

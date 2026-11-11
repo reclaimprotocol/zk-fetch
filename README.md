@@ -318,6 +318,7 @@ You can also use responseMatches and responseRedactions to match and redact the 
         // returns the OPRF hash string (not the plaintext).
         //   'oprf-mpc' — TEE path (the default); computed by the TEEs with MPC
         //   'oprf-raw' — non-TEE path only; keeps the request off TEE
+        //   'oprf'     — deprecated; treated as 'oprf-mpc'
         hash: 'oprf-mpc' // 'oprf-mpc' | 'oprf-raw'
       }
     ]
