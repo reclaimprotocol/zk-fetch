@@ -3,7 +3,7 @@ import { ethers } from 'ethers'
 import { createAuthRequest } from '@reclaimprotocol/attestor-core'
 import type { ClaimTunnelResponse } from '@reclaimprotocol/attestor-core/lib/proto/api'
 import { ReclaimClient, BuilderQuotaExceededError, BuilderAuthorizationError } from '../src'
-import { decodeBuilderAuthorizationToken } from '../src/utils'
+import { decodeBuilderAuthorizationToken, encodeBuilderAuthorizationForTee } from '../src/utils'
 
 // Mock the attestor client so these tests never open a real WebSocket
 // connection -- only Builder-mode's HTTP call to Builder and its handoff
@@ -386,5 +386,42 @@ describe('decodeBuilderAuthorizationToken: base64 -> object round-trip', () => {
       'utf8'
     ).toString('base64')
     expect(() => decodeBuilderAuthorizationToken(badToken)).toThrow()
+  })
+})
+
+// libreclaim (TEE path) parses the token as strict protobuf canonical JSON:
+// `signature` must be a base64 string and unknown fields are rejected.
+describe('encodeBuilderAuthorizationForTee: canonical JSON for the TEE library', () => {
+  const decodeCanonical = (b64: string) => JSON.parse(Buffer.from(b64, 'base64').toString('utf8'))
+
+  test('keeps data and signature from the shape Builder produces', async () => {
+    const wallet = ethers.Wallet.createRandom()
+    const { request, token } = await mintBuilderToken(wallet.privateKey, 'session-tee')
+
+    const canonical = decodeCanonical(encodeBuilderAuthorizationForTee(token))
+
+    expect(Object.keys(canonical).sort()).toEqual(['data', 'signature'])
+    expect(canonical.data).toEqual(request.data)
+    expect(canonical.signature).toBe(Buffer.from(request.signature).toString('base64'))
+  })
+
+  test('turns the {type: "uint8array", value} signature into a base64 string', async () => {
+    const wallet = ethers.Wallet.createRandom()
+    const request = await createAuthRequest({ id: 'session-tee-wrapped' }, wallet.privateKey)
+    const signatureB64 = Buffer.from(request.signature).toString('base64')
+    const wrappedToken = Buffer.from(
+      JSON.stringify({ ...request, signature: { type: 'uint8array', value: signatureB64 } }),
+      'utf8'
+    ).toString('base64')
+
+    const canonical = decodeCanonical(encodeBuilderAuthorizationForTee(wrappedToken))
+
+    expect(canonical.signature).toBe(signatureB64)
+    expect(canonical.data).toEqual(request.data)
+  })
+
+  test('rejects a malformed token instead of forwarding it', () => {
+    const badToken = Buffer.from('not json', 'utf8').toString('base64')
+    expect(() => encodeBuilderAuthorizationForTee(badToken)).toThrow()
   })
 })

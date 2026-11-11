@@ -22,7 +22,7 @@ export const TODO_URL = "https://jsonplaceholder.typicode.com/todos/1"
 export const TODO_TITLE = "delectus aut autem"
 
 /** The same fetch in every mode, so both modes are compared like for like. */
-export const getTodoWith = (client: ReclaimClient, contextMessage: string, retries = 2) =>
+export const getTodoWith = (client: ReclaimClient, contextMessage: string, retries = 2, useTee = false) =>
     client.zkFetch(
         TODO_URL,
         {
@@ -31,6 +31,7 @@ export const getTodoWith = (client: ReclaimClient, contextMessage: string, retri
                 contextAddress: "0x0000000000000000000000000000000000000000",
                 contextMessage,
             },
+            useTee,
         },
         {
             responseMatches: [{

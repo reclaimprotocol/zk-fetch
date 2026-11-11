@@ -53,4 +53,16 @@ describe.skipIf(!hasBuilderCredentials)('Builder mode (org token), live', () => 
     expect(error).toBeInstanceOf(BuilderAuthorizationError)
     expect(error).not.toBeInstanceOf(BuilderQuotaExceededError)
   }, 60000)
+
+  test('produces a valid TEE proof (useTee: true)', async () => {
+    const proof = await getTodoWith(createBuilderClient(), 'builder_tee', 2, true)
+    expectValidProof(proof, 'builder_tee')
+  }, 120000)
+
+  test('rejects an invalid org token on the TEE path with BuilderAuthorizationError', async () => {
+    const error = await getTodoWith(createBuilderClient('rorg_invalid_token'), 'builder_tee_bad', 1, true)
+      .catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(BuilderAuthorizationError)
+    expect(error).not.toBeInstanceOf(BuilderQuotaExceededError)
+  }, 60000)
 })

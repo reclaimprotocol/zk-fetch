@@ -13,7 +13,7 @@ Key features:
 - Built on [Reclaim Protocol](https://reclaimprotocol.org)
 
 
-> **Using an application ID and secret from the Reclaim Devtool?** That legacy auth mode is deprecated and will be removed in a future release. Please move to [Reclaim Builder](https://build.reclaimprotocol.org) and an organization token — see [Migrating from Devtool to Builder](#migrating-from-devtool-to-builder).
+> **Reclaim Devtool has been discontinued.** Application IDs and secrets from the Devtool are no longer supported. Use [Reclaim Builder](https://build.reclaimprotocol.org) and an organization token — see [Migrating from Devtool to Builder](#migrating-from-devtool-to-builder).
 
 ## Installation
 
@@ -99,7 +99,7 @@ try {
 }
 ```
 
-> Builder mode does not currently support `useTee: true`; it only covers the standard (non-TEE) `zkFetch` path.
+> Builder mode works with both the standard path and TEE mode (`useTee: true`). Each TEE attempt is authorized and counted against your quota the same way.
 
 ### Migrating from Devtool to Builder
 
@@ -107,7 +107,7 @@ try {
 2. Replace the application id/secret with the token. Everything else — `zkFetch` options, response matches, redactions and the proof format — stays the same:
 
 ```javascript
-// Before (Devtool, deprecated)
+// Before (Devtool, discontinued)
 const client = new ReclaimClient('APPLICATION_ID', 'APPLICATION_SECRET', logs, retries);
 
 // After (Builder)
@@ -115,82 +115,6 @@ const client = new ReclaimClient({ orgToken: process.env.RECLAIM_ORG_TOKEN, logs
 ```
 
 3. If you used `generateSessionSignature` to hand signatures to an untrusted client, move those `zkFetch` calls to your server instead. Builder org tokens must stay server-side.
-
-### Legacy: Devtool Application ID and Secret (deprecated)
-
-> **Deprecated.** This mode still works in 2.x, but it will be removed in a future release. New integrations should use [Builder mode](#builder-mode-organization-token).
-
-#### Direct secret
-
-```javascript
-const { ReclaimClient } = require('@reclaimprotocol/zk-fetch');
-
-// Server only - never expose the secret in frontend code
-const client = new ReclaimClient('APPLICATION_ID', 'APPLICATION_SECRET');
-
-const proof = await client.zkFetch('https://api.example.com/data', {
-  method: 'GET'
-});
-```
-
-#### Session signature
-
-A signature lets a less-trusted process make `zkFetch` calls without holding your application secret. It still requires a Node.js 22+ runtime.
-
-**Step 1: Generate signature on your backend**
-
-```javascript
-const { generateSessionSignature } = require('@reclaimprotocol/zk-fetch');
-
-// Backend API endpoint
-app.post('/api/get-signature', async (req, res) => {
-  const signature = await generateSessionSignature({
-    applicationId: process.env.APP_ID,
-    applicationSecret: process.env.APP_SECRET,
-    allowedUrls: [
-      'https://api.coingecko.com/*',                  // Wildcard - all paths under domain
-      'https://api.example.com/public/data',          // Exact URL match
-      '^https://api\\.example\\.com/user/\\d+$'        // Regex pattern
-    ],
-    expiresAt: Math.floor(Date.now() / 1000) + 3600  // Expires in 1 hour (optional)
-  });
-
-  res.json({ signature });
-});
-```
-
-**Step 2: Use the signature in the less-trusted process**
-
-```javascript
-const { ReclaimClient } = require('@reclaimprotocol/zk-fetch');
-
-// Fetch signature from your backend
-const response = await fetch('https://your-backend.example.com/api/get-signature', { method: 'POST' });
-const { signature } = await response.json();
-
-// Initialize with the signature instead of the secret
-const client = new ReclaimClient(
-  'APPLICATION_ID',
-  signature
-);
-
-// Make requests (only to URLs in allowlist)
-const proof = await client.zkFetch(
-  'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd',
-  { method: 'GET' }
-);
-```
-
-**Signature Features:**
-- Time-limited (default 1 hour, max 72 hours)
-- URL-restricted via allowlist (exact, wildcard, or regex patterns)
-- Cryptographically signed (ECDSA)
-- The application secret stays on your backend
-
-**URL Pattern Examples:**
-- `'https://api.example.com/data'` - Exact match only
-- `'https://api.example.com/*'` - All paths under domain
-- `'^https://api\\.example\\.com/user/\\d+$'` - Regex pattern for dynamic URLs
 
 ## Client Configuration
 
@@ -212,11 +136,9 @@ new ReclaimClient({ orgToken, builderBaseUrl?, logs?, retries? })
 const client = new ReclaimClient({ orgToken: process.env.RECLAIM_ORG_TOKEN, logs: true, retries: 3 });
 ```
 
-The deprecated Devtool form takes the same `logs` and `retries` as positional arguments: `new ReclaimClient(applicationId, applicationSecret, logs?, retries?)`.
-
 ### Using TEE Mode
 
-> TEE mode currently requires the deprecated Devtool credentials: Builder mode doesn't support `useTee: true` yet. See [Requirements](#requirements) for supported platforms.
+> See [Requirements](#requirements) for the platforms TEE mode supports.
 
 TEE (Trusted Execution Environment) mode can be enabled per-request by setting `useTee: true` in the options:
 
@@ -447,43 +369,60 @@ The response looks like the follows
 
 #### Verify the proofs
 
-Install @reclaimprotocol/js-sdk
+Verify proofs on your server with [`@reclaimprotocol/client`](https://www.npmjs.com/package/@reclaimprotocol/client) (Node.js 22+):
 
-```bash 
-$ npm install @reclaimprotocol/js-sdk
+```bash
+npm install @reclaimprotocol/client
 ```
 
-Import the verifyProof function from the js-sdk
+The verifier rebuilds the hash of the request it expects (same URL, method, response matches and redactions the prover used), then checks the proof against that hash and against the attestors Reclaim publishes:
 
 ```javascript
-const { verifyProof } = require('@reclaimprotocol/js-sdk');
+import { hashProofClaimParams, verifyRequestProof } from '@reclaimprotocol/client';
+
+// The request you expect the proof to cover
+const hashes = hashProofClaimParams({
+  url: 'https://api.example.com/data',
+  method: 'GET',
+  responseMatches: [{ type: 'regex', value: '"price":"(?<price>[\\d\\.]+)"' }],
+  responseRedactions: [{ regex: '"price":"(?<price>[\\d\\.]+)"' }],
+});
+
+const outcome = await verifyRequestProof(proof, {
+  hashes,
+  // Trust the attestors listed in Reclaim Builder's published key set
+  attestorJwksUrl: 'https://build.reclaimprotocol.org/.well-known/jwks.json',
+});
+
+if (!outcome.valid) {
+  throw new Error(`Invalid proof: ${outcome.reason}`);
+}
 ```
 
-Use verifyProof(proof)
+`verifyRequestProof` checks that the proof is signed by a trusted attestor, that the signed claim hasn't been modified, and that it was produced for the expected request: a valid proof for a different URL or different matches is rejected. It returns `{ valid, reason }` instead of throwing. Send the verifier the full proof object returned by `zkFetch`.
 
-You must send the proofObject and not the verifiedResponse to the verifier for them to be able to verify.
-
-```javascript
-const isProofVerified = await verifyProof(proof);
-```
-
-it verifies the authenticity and completeness of a given proof. It checks if the proof contains signatures, recalculates the proof identifier, and verifies it against the provided signatures. If the verification fails, it will log the error and return false.
+`@reclaimprotocol/client` is ESM-only. From CommonJS, load it with `const { hashProofClaimParams, verifyRequestProof } = await import('@reclaimprotocol/client');`.
 
 #### Transform proof for onchain
 
-Transforms proof data into a format suitable for on-chain transactions, you need to use it before sending the proof to the blockchain.
-
-Import the transformForOnchain function from the js-sdk
+`transformForOnchain` reshapes a proof into the format Reclaim's verifier contracts take. Verify the proof first; this only reshapes it.
 
 ```javascript
-const { transformForOnchain } = require('@reclaimprotocol/js-sdk');
-```
+const { transformForOnchain } = require('@reclaimprotocol/zk-fetch');
 
-Use transformForOnchain(proof) to transform the proof for onchain.
-
-```javascript
 const onchainProof = transformForOnchain(proof);
+// { claimInfo: { context, parameters, provider },
+//   signedClaim: { claim: { epoch, identifier, owner, timestampS }, signatures } }
 ```
+
+#### Moving off `@reclaimprotocol/js-sdk`
+
+`@reclaimprotocol/js-sdk` has been discontinued. Replace:
+
+| `@reclaimprotocol/js-sdk` | Use instead |
+| --- | --- |
+| `verifyProof(proof)` | `verifyRequestProof(proof, { hashes, attestorJwksUrl })` from `@reclaimprotocol/client` — see [Verify the proofs](#verify-the-proofs). It also checks that the proof covers the request you expected. |
+| `transformForOnchain(proof)` | `transformForOnchain(proof)` from `@reclaimprotocol/zk-fetch`. Same output, so contract calls don't change. |
 
 
 ### Add Retries and Retry Interval
@@ -538,15 +477,6 @@ Note: The geoLocation should be a two-letter ISO country code, for example, 'US'
   )
 
 ```
-
-## More examples
-
-you can find more examples/starter packs here 
-
-- [React Example](https://github.com/reclaimprotocol/reclaim-zkfetch-client)
-- [Express Example](https://github.com/reclaimprotocol/zkfetch-express-example)
-- [NestJS Example](https://github.com/reclaimprotocol/zkfetch-nestjs-example)
-- [Next.js Example](https://github.com/reclaimprotocol/reclaim-zkfetch-client/tree/feat/nextjs)
 
 ## License 
 This library is governed by an [AGPL](./LICENSE.md) license.

@@ -704,3 +704,19 @@ export function decodeBuilderAuthorizationToken(token: string): AuthenticationRe
 
   return { data: parsed.data, signature } as AuthenticationRequest;
 }
+
+/**
+ * Re-encodes a Builder authorization token for the TEE library (libreclaim).
+ * libreclaim parses a base64 AuthenticationRequest in protobuf's strict
+ * canonical JSON, where `signature` must be a base64 string. Builder may send
+ * the signature in other shapes (see decodeBuilderAuthorizationToken), so
+ * decode first and re-encode canonically.
+ */
+export function encodeBuilderAuthorizationForTee(token: string): string {
+  const { data, signature } = decodeBuilderAuthorizationToken(token);
+  const canonical = JSON.stringify({
+    data,
+    signature: Buffer.from(signature as Uint8Array).toString('base64'),
+  });
+  return Buffer.from(canonical, 'utf-8').toString('base64');
+}
