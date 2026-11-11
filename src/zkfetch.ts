@@ -29,7 +29,8 @@ import P from "pino";
 import { verifySessionSignature } from "./signature";
 import { BuilderAuthorizationError, InvalidParamError } from "./errors";
 import { ReclaimSDK } from "./tee";
-import { ensureTeeLibrary } from "./tee-library";
+import { ensureTeeLibrary, isTeePlatformSupported } from "./tee-library";
+import { resolveUseTee } from "./tee-default";
 import { ATTESTOR_NODE_URL, BUILDER_BASE_URL } from "./constants";
 const logger = P();
 
@@ -221,8 +222,12 @@ export class ReclaimClient {
       });
     }
 
-    // Use TEE execution path if TEE mode is enabled for this request
-    if (options?.useTee) {
+    // TEE is the default; see resolveUseTee for when a call stays on the non-TEE path.
+    const useTee = resolveUseTee(options, secretOptions, isTeePlatformSupported());
+    if (this.logs && options?.useTee === undefined) {
+      logger.info(`useTee not set; using the ${useTee ? 'TEE' : 'non-TEE'} path`);
+    }
+    if (useTee) {
       // Lazy-initialize TEE SDK if not already initialized. The native library
       // is normally downloaded at install time; this downloads and verifies it
       // if that was skipped.

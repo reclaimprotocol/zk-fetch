@@ -13,7 +13,7 @@ Key features:
 - Built on [Reclaim Protocol](https://reclaimprotocol.org)
 
 
-> **Reclaim Devtool has been discontinued.** Application IDs and secrets from the Devtool are no longer supported. Use [Reclaim Builder](https://build.reclaimprotocol.org) and an organization token — see [Migrating from Devtool to Builder](#migrating-from-devtool-to-builder).
+> **Reclaim Devtool has been deprecated.** Application IDs and secrets from the Devtool are no longer supported. Use [Reclaim Builder](https://build.reclaimprotocol.org) and an organization token — see [Migrating from Devtool to Builder](#migrating-from-devtool-to-builder).
 
 ## Installation
 
@@ -33,7 +33,7 @@ npm install @reclaimprotocol/zk-fetch
   | Linux (glibc) | x64, arm64 | glibc 2.17 |
   | Windows | x64 | Windows 10 |
 
-  In slim Docker images, install the system CA certificates (for example `apt-get install -y ca-certificates`), or TEE requests will fail TLS verification.
+  On other platforms, requests use the non-TEE path. In slim Docker images, install the system CA certificates (for example `apt-get install -y ca-certificates`), or TEE requests will fail TLS verification.
 
 
 ## Quick Start
@@ -99,7 +99,7 @@ try {
 }
 ```
 
-> Builder mode works with both the standard path and TEE mode (`useTee: true`). Each TEE attempt is authorized and counted against your quota the same way.
+> Builder mode works with both TEE mode (the default) and the non-TEE path. Each attempt on either path is authorized and counted against your quota.
 
 ### Migrating from Devtool to Builder
 
@@ -107,7 +107,7 @@ try {
 2. Replace the application id/secret with the token. Everything else — `zkFetch` options, response matches, redactions and the proof format — stays the same:
 
 ```javascript
-// Before (Devtool, discontinued)
+// Before (Devtool, deprecated)
 const client = new ReclaimClient('APPLICATION_ID', 'APPLICATION_SECRET', logs, retries);
 
 // After (Builder)
@@ -140,18 +140,25 @@ const client = new ReclaimClient({ orgToken: process.env.RECLAIM_ORG_TOKEN, logs
 
 > See [Requirements](#requirements) for the platforms TEE mode supports.
 
-TEE (Trusted Execution Environment) mode can be enabled per-request by setting `useTee: true` in the options:
+Requests run in TEE (Trusted Execution Environment) mode by default. A request stays on the non-TEE path when you don't set `useTee` and it:
+
+- sets `zkEngine` (see [Choosing the ZK Engine](#choosing-the-zk-engine-non-tee)),
+- uses an `oprf-raw` redaction hash, or
+- runs on a platform without a TEE library (see [Requirements](#requirements)).
+
+Set `useTee` to choose explicitly; an explicit value always wins:
 
 ```javascript
+// Force the non-TEE path for this request
 const proof = await client.zkFetch('https://api.example.com/data', {
   method: 'GET',
-  useTee: true  // Enable TEE mode for this specific request
+  useTee: false
 });
 ```
 
 #### The TEE library download
 
-TEE mode runs through a native library (`libreclaim`) that isn't bundled in the npm package. `npm install` downloads the one for your platform (about 30–40 MB) from this repo's [GitHub Releases](https://github.com/reclaimprotocol/zk-fetch/releases) and checks it against a sha256 pinned in the package; a file that doesn't match is never loaded. If the download was skipped (for example `npm install --ignore-scripts`) or failed, the first `useTee: true` request downloads it instead. It's stored in the package's `lib/` folder, or in your user cache folder if `node_modules` is read-only.
+TEE mode runs through a native library (`libreclaim`) that isn't bundled in the npm package. `npm install` downloads the one for your platform (about 30–40 MB) from this repo's [GitHub Releases](https://github.com/reclaimprotocol/zk-fetch/releases) and checks it against a sha256 pinned in the package; a file that doesn't match is never loaded. If the download was skipped (for example `npm install --ignore-scripts`) or failed, the first TEE request downloads it instead. It's stored in the package's `lib/` folder, or in your user cache folder if `node_modules` is read-only.
 
 | Environment variable | Effect |
 | --- | --- |
@@ -172,7 +179,7 @@ const proof = await client.zkFetch('https://api.example.com/data', {
 });
 ```
 
-`zkEngine` is ignored when `useTee: true` — the TEE path picks its own engine.
+Setting `zkEngine` keeps a request on the non-TEE path. It's ignored if you also pass `useTee: true`, since the TEE path picks its own engine.
 
 > **snarkjs requires extra setup.** snarkjs proofs need the `chacha20` / `aes-128-ctr` / `aes-256-ctr` circuit files
 > (`circuit.wasm`, `circuit_final.zkey`, `circuit.r1cs`) which are not shipped in the npm tarball. After `npm install`,
@@ -309,9 +316,9 @@ You can also use responseMatches and responseRedactions to match and redact the 
         // Optional: replace the matched span with an OPRF commitment instead
         // of a plain redaction byte. When set, `extractedParameterValues.<name>`
         // returns the OPRF hash string (not the plaintext).
-        //   'oprf'     — only honored on the TEE path (`useTee: true`)
-        //   'oprf-raw' — only honored on the non-TEE path
-        hash: 'oprf' // 'oprf' | 'oprf-raw'
+        //   'oprf-mpc' — TEE path (the default); computed by the TEEs with MPC
+        //   'oprf-raw' — non-TEE path only; keeps the request off TEE
+        hash: 'oprf-mpc' // 'oprf-mpc' | 'oprf-raw'
       }
     ]
   }
@@ -399,6 +406,8 @@ if (!outcome.valid) {
 }
 ```
 
+Pass `hashProofClaimParams` the same `url`, `method`, `responseMatches` and `responseRedactions` you gave `zkFetch`, including any `hash` on a redaction (for example `{ regex, hash: 'oprf-mpc' }`); otherwise the hashes won't match and verification fails. Empty or unset fields such as `body: ''`, `jsonPath: ''` or `invert: undefined` don't change the hash, so you can leave them out.
+
 `verifyRequestProof` checks that the proof is signed by a trusted attestor, that the signed claim hasn't been modified, and that it was produced for the expected request: a valid proof for a different URL or different matches is rejected. It returns `{ valid, reason }` instead of throwing. Send the verifier the full proof object returned by `zkFetch`.
 
 `@reclaimprotocol/client` is ESM-only. From CommonJS, load it with `const { hashProofClaimParams, verifyRequestProof } = await import('@reclaimprotocol/client');`.
@@ -446,7 +455,7 @@ You can add retries and a retry interval to the fetch request. The per-call defa
   )
 ```
 
-> **TEE note:** on the TEE path (`useTee: true`), a fresh enclave allocation can time out on a cold start. To avoid a single transient timeout hard-failing the request, the TEE path automatically retries such transient failures a few times even when `retries` is `1`. Non-transient errors still fail fast per your `retries`.
+> **TEE note:** on the TEE path, a fresh enclave allocation can time out on a cold start. To avoid a single transient timeout hard-failing the request, the TEE path automatically retries such transient failures a few times even when `retries` is `1`. Non-transient errors still fail fast per your `retries`.
 
 ### Add GeoLocation
 

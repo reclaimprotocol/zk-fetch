@@ -124,7 +124,7 @@ describe('Builder-mode zkFetch: successful authorization flows into a proof atte
     })
 
     const client = new ReclaimClient({ orgToken: ORG_TOKEN, builderBaseUrl: BUILDER_BASE_URL })
-    const proof = await client.zkFetch('https://api.github.com/user', { method: 'GET' })
+    const proof = await client.zkFetch('https://api.github.com/user', { method: 'GET', useTee: false })
 
     expect(proof.identifier).toBe('0xidentifier')
     expect(proof.witnesses[0].url).toBe('wss://attestor.reclaimprotocol.org/ws')
@@ -173,7 +173,7 @@ describe('Builder-mode zkFetch: successful authorization flows into a proof atte
       .mockResolvedValueOnce(fakeClaimTunnelResponse())
 
     const client = new ReclaimClient({ orgToken: ORG_TOKEN, builderBaseUrl: BUILDER_BASE_URL })
-    const proof = await client.zkFetch('https://api.github.com/user', { method: 'GET' }, undefined, 2, 0)
+    const proof = await client.zkFetch('https://api.github.com/user', { method: 'GET', useTee: false }, undefined, 2, 0)
 
     expect(proof.identifier).toBe('0xidentifier')
     expect(authCalls).toBe(2)
@@ -189,7 +189,7 @@ describe('Builder-mode zkFetch: optional authorization token', () => {
     fetchMock.mockImplementation(async () => jsonResponse({}))
 
     const client = new ReclaimClient({ orgToken: ORG_TOKEN, builderBaseUrl: BUILDER_BASE_URL })
-    const proof = await client.zkFetch('https://api.github.com/user', { method: 'GET' })
+    const proof = await client.zkFetch('https://api.github.com/user', { method: 'GET', useTee: false })
 
     expect(proof.identifier).toBe('0xidentifier')
     expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -204,7 +204,7 @@ describe('Builder-mode zkFetch: optional authorization token', () => {
     fetchMock.mockImplementation(async () => jsonResponse({ token, expiresAt: new Date().toISOString() }))
 
     const client = new ReclaimClient({ orgToken: ORG_TOKEN, builderBaseUrl: BUILDER_BASE_URL })
-    await client.zkFetch('https://api.github.com/user', { method: 'GET' })
+    await client.zkFetch('https://api.github.com/user', { method: 'GET', useTee: false })
 
     const callArgs = createClaimOnAttestorMock.mock.calls[0][0] as any
     expect(callArgs.client.authRequest.data).toEqual(request.data)
@@ -216,7 +216,7 @@ describe('Builder-mode zkFetch: optional authorization token', () => {
 
     const client = new ReclaimClient({ orgToken: ORG_TOKEN, builderBaseUrl: BUILDER_BASE_URL })
     await expect(
-      client.zkFetch('https://api.github.com/user', { method: 'GET' })
+      client.zkFetch('https://api.github.com/user', { method: 'GET', useTee: false })
     ).rejects.toBeInstanceOf(BuilderAuthorizationError)
     expect(createClaimOnAttestorMock).not.toHaveBeenCalled()
   })
@@ -236,7 +236,7 @@ describe('Builder-mode zkFetch: optional authorization token', () => {
 
     const client = new ReclaimClient({ orgToken: ORG_TOKEN, builderBaseUrl: BUILDER_BASE_URL })
     await expect(
-      client.zkFetch('https://api.github.com/user', { method: 'GET' })
+      client.zkFetch('https://api.github.com/user', { method: 'GET', useTee: false })
     ).rejects.toBeInstanceOf(BuilderAuthorizationError)
     expect(createClaimOnAttestorMock).not.toHaveBeenCalled()
   })
@@ -264,7 +264,7 @@ describe('legacy zkFetch remains on the devtools path', () => {
     })
 
     const client = new ReclaimClient(wallet.address, wallet.privateKey)
-    const proof = await client.zkFetch('https://api.github.com/user', { method: 'GET' })
+    const proof = await client.zkFetch('https://api.github.com/user', { method: 'GET', useTee: false })
 
     expect(proof.witnesses[0].url).toBe(legacyAttestorUrl)
     expect(createClaimOnAttestorMock.mock.calls[0][0].client?.url).toBe(legacyAttestorUrl)
@@ -287,7 +287,7 @@ describe('Builder-mode zkFetch: quota exhaustion', () => {
 
     let caught: unknown
     try {
-      await client.zkFetch('https://api.github.com/user', { method: 'GET' })
+      await client.zkFetch('https://api.github.com/user', { method: 'GET', useTee: false })
       throw new Error('expected zkFetch to reject')
     } catch (error) {
       caught = error
@@ -314,7 +314,7 @@ describe('Builder-mode zkFetch: quota exhaustion', () => {
     const client = new ReclaimClient({ orgToken: ORG_TOKEN, builderBaseUrl: BUILDER_BASE_URL })
 
     await expect(
-      client.zkFetch('https://api.github.com/user', { method: 'GET' })
+      client.zkFetch('https://api.github.com/user', { method: 'GET', useTee: false })
     ).rejects.toMatchObject({ name: 'BuilderQuotaExceededError', status: 402 })
   })
 
@@ -331,7 +331,7 @@ describe('Builder-mode zkFetch: quota exhaustion', () => {
 
     let caught: unknown
     try {
-      await client.zkFetch('https://api.github.com/user', { method: 'GET' })
+      await client.zkFetch('https://api.github.com/user', { method: 'GET', useTee: false })
     } catch (error) {
       caught = error
     }

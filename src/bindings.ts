@@ -93,6 +93,16 @@ export function executeProtocol(
     claimLengthPtr
   ) as ReclaimError;
 
+  return decodeProtocolResult(error, claimJsonPtr, claimLengthPtr);
+}
+
+type ProtocolResult = { error: ReclaimError; claimJson: string | null; claimLength: number; rawPointer: RawPointer | null };
+
+function decodeProtocolResult(
+  error: ReclaimError,
+  claimJsonPtr: [RawPointer | null],
+  claimLengthPtr: number[]
+): ProtocolResult {
   const rawPointer = claimJsonPtr[0];
   const claimLength = claimLengthPtr[0] as number;
 
@@ -106,6 +116,36 @@ export function executeProtocol(
 
   return { error, claimJson, claimLength, rawPointer };
 }
+
+/**
+ * Execute the Reclaim protocol on a worker thread, so the Node.js event loop
+ * stays free while it runs (the protocol takes seconds).
+ */
+export function executeProtocolAsync(requestJson: string, configJson?: string): Promise<ProtocolResult> {
+  if (!lib || !_reclaim_execute_protocol) {
+    throw new Error('Library not loaded. Call loadLibrary() first.');
+  }
+
+  const claimJsonPtr: [RawPointer | null] = [null];
+  const claimLengthPtr = [0];
+
+  return new Promise((resolve, reject) => {
+    _reclaim_execute_protocol!.async(
+      requestJson,
+      configJson || '',
+      claimJsonPtr,
+      claimLengthPtr,
+      (err: unknown, error: ReclaimError) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        resolve(decodeProtocolResult(error, claimJsonPtr, claimLengthPtr));
+      }
+    );
+  });
+}
+
 
 /**
  * Free a pointer allocated by the library
