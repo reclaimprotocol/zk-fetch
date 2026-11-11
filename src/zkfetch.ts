@@ -19,6 +19,7 @@ import {
   isTransientTeeError,
   TEE_MIN_ATTEMPTS,
   createEphemeralOwnerKey,
+  encodeBuilderAuthorizationForTee,
   getHostFromUrl,
   requestBuilderAuthorization,
   decodeBuilderAuthorizationToken,
@@ -26,9 +27,10 @@ import {
 import { v4 } from "uuid";
 import P from "pino";
 import { verifySessionSignature } from "./signature";
-import { InvalidParamError } from "./errors";
+import { BuilderAuthorizationError, InvalidParamError } from "./errors";
 import { ReclaimSDK } from "./tee";
-import { ensureTeeLibrary } from "./tee-library";
+import { ensureTeeLibrary, isTeePlatformSupported } from "./tee-library";
+import { resolveUseTee, teeRedactions } from "./tee-default";
 import { ATTESTOR_NODE_URL, BUILDER_BASE_URL } from "./constants";
 const logger = P();
 
@@ -175,6 +177,11 @@ export class ReclaimClient {
     retryInterval = 1000
   ) {
     validateURL(url, "zkFetch");
+    // Checked before either path runs, so a bad value never reaches Builder
+    // (which would issue, and charge for, an authorization).
+    if (!Number.isInteger(retries) || retries < 1) {
+      throw new InvalidParamError('retries must be a positive integer');
+    }
     if (options !== undefined) {
       assertCorrectnessOfOptions(options);
     }
@@ -220,13 +227,8 @@ export class ReclaimClient {
       });
     }
 
-    // Use TEE execution path if TEE mode is enabled for this request
-    if (options?.useTee) {
-      if (this.builderOrgToken) {
-        throw new InvalidParamError(
-          'Builder mode does not support useTee yet; use the standard (non-TEE) zkFetch path.'
-        );
-      }
+    // TEE is the default; see resolveUseTee for when a call stays on the non-TEE path.
+    if (resolveUseTee(options, secretOptions, isTeePlatformSupported())) {
       // Lazy-initialize TEE SDK if not already initialized. The native library
       // is normally downloaded at install time; this downloads and verifies it
       // if that was skipped.
@@ -325,6 +327,10 @@ export class ReclaimClient {
         await new Promise((resolve) => setTimeout(resolve, retryInterval));
       }
     }
+
+    // Unreachable: retries >= 1 is checked above and every attempt returns or
+    // throws. Kept so zkFetch is typed Promise<Proof>.
+    throw new InvalidParamError('retries must be a positive integer');
   }
 
   /**
@@ -359,7 +365,7 @@ export class ReclaimClient {
             value: "(?<data>.*)",
           },
         ],
-        responseRedactions: secretOptions?.responseRedactions || [],
+        responseRedactions: teeRedactions(secretOptions?.responseRedactions),
         body: options?.body || "",
         paramValues: options?.paramValues || {},
         geoLocation: options?.geoLocation,
@@ -384,7 +390,24 @@ export class ReclaimClient {
     let attempt = 0;
     while (attempt < maxAttempts) {
       try {
-        const result = await this.teeSDK.executeProtocolAsync(request, teeConfig);
+        // In Builder mode, authorize THIS attempt right before running it, as
+        // the non-TEE path does: the token is single-use and expires in ~10s,
+        // and Builder charges the org's ZKFETCH quota whether or not it
+        // returns one. libreclaim forwards it to the attestor as the
+        // AuthenticationRequest, re-encoded in the canonical JSON form it parses.
+        let attemptRequest: typeof request & { authRequest?: string } = request;
+        if (this.builderOrgToken) {
+          const authorization = await requestBuilderAuthorization(
+            this.builderBaseUrl!,
+            this.builderOrgToken,
+            getHostFromUrl(url)
+          );
+          if (authorization.token) {
+            attemptRequest = { ...request, authRequest: encodeBuilderAuthorizationForTee(authorization.token) };
+          }
+        }
+
+        const result = await this.teeSDK.executeProtocolAsync(attemptRequest, teeConfig);
 
         // Check for errors in TEE result (matching non-TEE path behavior)
         if (result.claim.error) {
@@ -393,24 +416,33 @@ export class ReclaimClient {
           );
         }
 
-        await sendLogs({
-          sessionId,
-          logType: LogType.PROOF_GENERATED,
-          applicationId: this.applicationId,
-        });
+        // Devtool usage logging; Builder meters through its authorization call.
+        if (!this.builderOrgToken) {
+          await sendLogs({
+            sessionId,
+            logType: LogType.PROOF_GENERATED,
+            applicationId: this.applicationId,
+          });
+        }
 
         return await transformTeeProof(result, fetchedTeeUrls.teeAttestorUrl);
       } catch (error) {
         attempt++;
+        // Builder rejections (bad token, quota exhausted) aren't transient.
+        if (error instanceof BuilderAuthorizationError) {
+          throw error;
+        }
         const canRetry =
           attempt < maxAttempts &&
           (attempt < retries || isTransientTeeError(error));
         if (!canRetry) {
-          await sendLogs({
-            sessionId,
-            logType: LogType.ERROR,
-            applicationId: this.applicationId,
-          });
+          if (!this.builderOrgToken) {
+            await sendLogs({
+              sessionId,
+              logType: LogType.ERROR,
+              applicationId: this.applicationId,
+            });
+          }
           logger.error(error);
           throw error;
         }

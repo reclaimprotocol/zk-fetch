@@ -78,7 +78,7 @@ export const getBtcPriceWithTee = async () => {
             type: 'regex' as const,
             value: '"USD":\\{"code":"USD","rate":"(?<price>[\\d,\\.]+)"',
         }],
-        responseRedactions: [{ regex: '"USD":\\{"code":"USD","rate":"(?<price>[\\d,\\.]+)"', hash: 'oprf' as const }],
+        responseRedactions: [{ regex: '"USD":\\{"code":"USD","rate":"(?<price>[\\d,\\.]+)"', hash: 'oprf-mpc' as const }],
     }
     const url = "https://api.coindesk.com/v1/bpi/currentprice.json";
     return await reclaim.zkFetch(url, options, privateOptions)

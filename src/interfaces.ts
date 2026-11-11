@@ -26,11 +26,14 @@ export interface Options {
   geoLocation?: string;
   paramValues?: { [key: string]: string };
   context?: { contextAddress: string, contextMessage: string };
-  /** Enable TEE mode for this request (default: false) */
+  /** Run this request in TEE mode. Defaults to TEE, except when the request
+   *  sets `zkEngine`, uses an `oprf-raw` redaction hash, or runs on a platform
+   *  without a TEE library; those stay on the non-TEE path. An explicit value
+   *  always wins: pass `false` to force the non-TEE path. */
   useTee?: boolean;
   /** ZK proof engine for the non-TEE path. Defaults to 'stwo'; switch to
    *  'snarkjs' if you need it for circuits with larger witness sizes.
-   *  Ignored when `useTee` is true. */
+   *  Setting it keeps a request on the non-TEE path unless `useTee: true` is passed. */
   zkEngine?: 'snarkjs' | 'stwo';
 }
 
@@ -44,9 +47,10 @@ export interface secretOptions {
    *  Optional `hash` swaps the plain redaction for an OPRF commitment, so
    *  `extractedParameterValues.<name>` returns the hash string instead of
    *  the plaintext value:
-   *   - 'oprf'     — TEE path only (`useTee: true`); commitment is computed inside the enclave.
-   *   - 'oprf-raw' — non-TEE / proxy path only; forces the stwo zkEngine. */
-  responseRedactions?: { regex?: string, jsonPath?: string, xPath?: string, hash?: 'oprf' | 'oprf-raw' }[];
+   *   - 'oprf-mpc' — TEE path (the default); computed by the TEEs with MPC.
+   *   - 'oprf-raw' — non-TEE path only; keeps the request off TEE.
+   *   - 'oprf'     — deprecated alias for 'oprf-mpc' on the TEE path. */
+  responseRedactions?: { regex?: string, jsonPath?: string, xPath?: string, hash?: 'oprf-mpc' | 'oprf-raw' | 'oprf' }[];
   cookieStr?: string;
   paramValues?: { [key: string]: string };
 }

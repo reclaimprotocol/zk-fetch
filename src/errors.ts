@@ -56,8 +56,13 @@ export class BuilderAuthorizationError extends Error {
  * surface a "you're out of zkFetch quota" message rather than a generic error.
  */
 export class BuilderQuotaExceededError extends BuilderAuthorizationError {
-    constructor(status: number, message?: string) {
+    /** The organization's billing page in Builder, where a member upgrades
+     *  the plan or adds credits. Present when Builder sends it. */
+    public readonly billingUrl?: string;
+
+    constructor(status: number, message?: string, billingUrl?: string) {
         super(message || `Builder zkFetch quota exceeded (HTTP ${status})`, status)
         this.name = 'BuilderQuotaExceededError'
+        this.billingUrl = billingUrl
     }
 }

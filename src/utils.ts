@@ -607,7 +607,19 @@ export async function requestBuilderAuthorization(
   }
 
   if (response.status === 402 || response.status === 429) {
-    throw new BuilderQuotaExceededError(response.status);
+    // Builder's problem body explains the refusal and links to the org's
+    // billing page. Fall back to a generic message if it can't be read.
+    let problem: { detail?: unknown; billingUrl?: unknown } = {};
+    try {
+      problem = await response.json();
+    } catch {
+      // ignore -- fall through with the generic message
+    }
+    throw new BuilderQuotaExceededError(
+      response.status,
+      typeof problem?.detail === 'string' ? problem.detail : undefined,
+      typeof problem?.billingUrl === 'string' ? problem.billingUrl : undefined
+    );
   }
 
   if (response.status === 401) {
@@ -703,4 +715,20 @@ export function decodeBuilderAuthorizationToken(token: string): AuthenticationRe
   }
 
   return { data: parsed.data, signature } as AuthenticationRequest;
+}
+
+/**
+ * Re-encodes a Builder authorization token for the TEE library (libreclaim).
+ * libreclaim parses a base64 AuthenticationRequest in protobuf's strict
+ * canonical JSON, where `signature` must be a base64 string. Builder may send
+ * the signature in other shapes (see decodeBuilderAuthorizationToken), so
+ * decode first and re-encode canonically.
+ */
+export function encodeBuilderAuthorizationForTee(token: string): string {
+  const { data, signature } = decodeBuilderAuthorizationToken(token);
+  const canonical = JSON.stringify({
+    data,
+    signature: Buffer.from(signature as Uint8Array).toString('base64'),
+  });
+  return Buffer.from(canonical, 'utf-8').toString('base64');
 }

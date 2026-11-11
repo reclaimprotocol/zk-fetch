@@ -26,12 +26,15 @@ export const TEE_SKIP_DOWNLOAD_ENV = 'RECLAIM_TEE_SKIP_DOWNLOAD';
 const DOWNLOAD_TIMEOUT_MS = 5 * 60 * 1000;
 
 /** `${process.platform}-${process.arch}`, plus `linux-musl-*` on non-glibc Linux. */
+let platformKey: string | undefined;
+
 export function getTeePlatformKey(): string {
-  const { platform, arch } = process;
-  if (platform === 'linux' && !isGlibc()) {
-    return `linux-musl-${arch}`;
+  if (platformKey === undefined) {
+    const { platform, arch } = process;
+    // isGlibc() builds a full diagnostic report, so compute this once.
+    platformKey = platform === 'linux' && !isGlibc() ? `linux-musl-${arch}` : `${platform}-${arch}`;
   }
-  return `${platform}-${arch}`;
+  return platformKey;
 }
 
 function isGlibc(): boolean {
@@ -178,4 +181,12 @@ export function getVerifiedTeeLibraryPath(): string | undefined {
   }
   const entry = getManifestEntry();
   return candidatePaths(entry).find((path) => verifiedPaths.has(path));
+}
+
+/** Whether TEE mode can run here: a TEE library is published for this platform, or RECLAIM_TEE_LIB_PATH is set. */
+export function isTeePlatformSupported(): boolean {
+  if (process.env[TEE_LIB_PATH_ENV]) {
+    return true;
+  }
+  return Boolean(TEE_LIBRARY_MANIFEST.files[getTeePlatformKey()]);
 }

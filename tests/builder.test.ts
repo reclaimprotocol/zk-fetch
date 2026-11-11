@@ -3,7 +3,7 @@ import { ethers } from 'ethers'
 import { createAuthRequest } from '@reclaimprotocol/attestor-core'
 import type { ClaimTunnelResponse } from '@reclaimprotocol/attestor-core/lib/proto/api'
 import { ReclaimClient, BuilderQuotaExceededError, BuilderAuthorizationError } from '../src'
-import { decodeBuilderAuthorizationToken } from '../src/utils'
+import { decodeBuilderAuthorizationToken, encodeBuilderAuthorizationForTee } from '../src/utils'
 
 // Mock the attestor client so these tests never open a real WebSocket
 // connection -- only Builder-mode's HTTP call to Builder and its handoff
@@ -99,6 +99,27 @@ describe('Builder mode construction', () => {
       'applicationSecret must be a non-empty string'
     )
   })
+
+  test('a per-call retries below 1 rejects instead of resolving to undefined', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const client = new ReclaimClient({ orgToken: ORG_TOKEN, builderBaseUrl: BUILDER_BASE_URL })
+
+    // Both paths, including the default TEE path, and non-integer values.
+    for (const [options, retries] of [
+      [{ method: 'GET', useTee: false }, 0],
+      [{ method: 'GET' }, 0],
+      [{ method: 'GET', useTee: true }, -1],
+      [{ method: 'GET' }, 1.5],
+    ] as const) {
+      await expect(
+        client.zkFetch('https://api.github.com/user', options, undefined, retries)
+      ).rejects.toThrow('retries must be a positive integer')
+    }
+    // No attempt is made, so Builder is never asked (and never charged).
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(createClaimOnAttestorMock).not.toHaveBeenCalled()
+  })
 })
 
 describe('Builder-mode zkFetch: successful authorization flows into a proof attempt', () => {
@@ -124,7 +145,7 @@ describe('Builder-mode zkFetch: successful authorization flows into a proof atte
     })
 
     const client = new ReclaimClient({ orgToken: ORG_TOKEN, builderBaseUrl: BUILDER_BASE_URL })
-    const proof = await client.zkFetch('https://api.github.com/user', { method: 'GET' })
+    const proof = await client.zkFetch('https://api.github.com/user', { method: 'GET', useTee: false })
 
     expect(proof.identifier).toBe('0xidentifier')
     expect(proof.witnesses[0].url).toBe('wss://attestor.reclaimprotocol.org/ws')
@@ -173,7 +194,7 @@ describe('Builder-mode zkFetch: successful authorization flows into a proof atte
       .mockResolvedValueOnce(fakeClaimTunnelResponse())
 
     const client = new ReclaimClient({ orgToken: ORG_TOKEN, builderBaseUrl: BUILDER_BASE_URL })
-    const proof = await client.zkFetch('https://api.github.com/user', { method: 'GET' }, undefined, 2, 0)
+    const proof = await client.zkFetch('https://api.github.com/user', { method: 'GET', useTee: false }, undefined, 2, 0)
 
     expect(proof.identifier).toBe('0xidentifier')
     expect(authCalls).toBe(2)
@@ -189,7 +210,7 @@ describe('Builder-mode zkFetch: optional authorization token', () => {
     fetchMock.mockImplementation(async () => jsonResponse({}))
 
     const client = new ReclaimClient({ orgToken: ORG_TOKEN, builderBaseUrl: BUILDER_BASE_URL })
-    const proof = await client.zkFetch('https://api.github.com/user', { method: 'GET' })
+    const proof = await client.zkFetch('https://api.github.com/user', { method: 'GET', useTee: false })
 
     expect(proof.identifier).toBe('0xidentifier')
     expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -204,7 +225,7 @@ describe('Builder-mode zkFetch: optional authorization token', () => {
     fetchMock.mockImplementation(async () => jsonResponse({ token, expiresAt: new Date().toISOString() }))
 
     const client = new ReclaimClient({ orgToken: ORG_TOKEN, builderBaseUrl: BUILDER_BASE_URL })
-    await client.zkFetch('https://api.github.com/user', { method: 'GET' })
+    await client.zkFetch('https://api.github.com/user', { method: 'GET', useTee: false })
 
     const callArgs = createClaimOnAttestorMock.mock.calls[0][0] as any
     expect(callArgs.client.authRequest.data).toEqual(request.data)
@@ -216,7 +237,7 @@ describe('Builder-mode zkFetch: optional authorization token', () => {
 
     const client = new ReclaimClient({ orgToken: ORG_TOKEN, builderBaseUrl: BUILDER_BASE_URL })
     await expect(
-      client.zkFetch('https://api.github.com/user', { method: 'GET' })
+      client.zkFetch('https://api.github.com/user', { method: 'GET', useTee: false })
     ).rejects.toBeInstanceOf(BuilderAuthorizationError)
     expect(createClaimOnAttestorMock).not.toHaveBeenCalled()
   })
@@ -236,7 +257,7 @@ describe('Builder-mode zkFetch: optional authorization token', () => {
 
     const client = new ReclaimClient({ orgToken: ORG_TOKEN, builderBaseUrl: BUILDER_BASE_URL })
     await expect(
-      client.zkFetch('https://api.github.com/user', { method: 'GET' })
+      client.zkFetch('https://api.github.com/user', { method: 'GET', useTee: false })
     ).rejects.toBeInstanceOf(BuilderAuthorizationError)
     expect(createClaimOnAttestorMock).not.toHaveBeenCalled()
   })
@@ -264,7 +285,7 @@ describe('legacy zkFetch remains on the devtools path', () => {
     })
 
     const client = new ReclaimClient(wallet.address, wallet.privateKey)
-    const proof = await client.zkFetch('https://api.github.com/user', { method: 'GET' })
+    const proof = await client.zkFetch('https://api.github.com/user', { method: 'GET', useTee: false })
 
     expect(proof.witnesses[0].url).toBe(legacyAttestorUrl)
     expect(createClaimOnAttestorMock.mock.calls[0][0].client?.url).toBe(legacyAttestorUrl)
@@ -287,7 +308,7 @@ describe('Builder-mode zkFetch: quota exhaustion', () => {
 
     let caught: unknown
     try {
-      await client.zkFetch('https://api.github.com/user', { method: 'GET' })
+      await client.zkFetch('https://api.github.com/user', { method: 'GET', useTee: false })
       throw new Error('expected zkFetch to reject')
     } catch (error) {
       caught = error
@@ -302,6 +323,24 @@ describe('Builder-mode zkFetch: quota exhaustion', () => {
     expect(createClaimOnAttestorMock).not.toHaveBeenCalled()
   })
 
+  test('a quota refusal carries Builder\'s detail and billing link', async () => {
+    const billingUrl = 'https://build.reclaimprotocol.org/orgs/org-1?tab=billing'
+    const detail = `ZKFETCH limit reached for the current billing period. Upgrade the organization's plan at ${billingUrl}`
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/fetch/authorizations')) {
+        return { ok: false, status: 429, json: async () => ({ status: 429, detail, billingUrl }), text: async () => '' } as Response
+      }
+      return { ok: true, status: 200, json: async () => [], text: async () => '[]' } as Response
+    })
+
+    const client = new ReclaimClient({ orgToken: ORG_TOKEN, builderBaseUrl: BUILDER_BASE_URL })
+
+    await expect(
+      client.zkFetch('https://api.github.com/user', { method: 'GET', useTee: false })
+    ).rejects.toMatchObject({ name: 'BuilderQuotaExceededError', status: 429, message: detail, billingUrl })
+  })
+
   test('a 402 from Builder also surfaces as BuilderQuotaExceededError', async () => {
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input)
@@ -314,7 +353,7 @@ describe('Builder-mode zkFetch: quota exhaustion', () => {
     const client = new ReclaimClient({ orgToken: ORG_TOKEN, builderBaseUrl: BUILDER_BASE_URL })
 
     await expect(
-      client.zkFetch('https://api.github.com/user', { method: 'GET' })
+      client.zkFetch('https://api.github.com/user', { method: 'GET', useTee: false })
     ).rejects.toMatchObject({ name: 'BuilderQuotaExceededError', status: 402 })
   })
 
@@ -331,7 +370,7 @@ describe('Builder-mode zkFetch: quota exhaustion', () => {
 
     let caught: unknown
     try {
-      await client.zkFetch('https://api.github.com/user', { method: 'GET' })
+      await client.zkFetch('https://api.github.com/user', { method: 'GET', useTee: false })
     } catch (error) {
       caught = error
     }
@@ -386,5 +425,37 @@ describe('decodeBuilderAuthorizationToken: base64 -> object round-trip', () => {
       'utf8'
     ).toString('base64')
     expect(() => decodeBuilderAuthorizationToken(badToken)).toThrow()
+  })
+})
+
+// libreclaim (TEE path) parses the token as strict protobuf canonical JSON:
+// `signature` must be a base64 string and unknown fields are rejected.
+describe('encodeBuilderAuthorizationForTee: canonical JSON for the TEE library', () => {
+  const decodeCanonical = (b64: string) => JSON.parse(Buffer.from(b64, 'base64').toString('utf8'))
+
+  test('keeps data and signature from the shape Builder produces', async () => {
+    const wallet = ethers.Wallet.createRandom()
+    const { request, token } = await mintBuilderToken(wallet.privateKey, 'session-tee')
+
+    const canonical = decodeCanonical(encodeBuilderAuthorizationForTee(token))
+
+    expect(Object.keys(canonical).sort()).toEqual(['data', 'signature'])
+    expect(canonical.data).toEqual(request.data)
+    expect(canonical.signature).toBe(Buffer.from(request.signature).toString('base64'))
+  })
+
+  test('turns the {type: "uint8array", value} signature into a base64 string', async () => {
+    const wallet = ethers.Wallet.createRandom()
+    const request = await createAuthRequest({ id: 'session-tee-wrapped' }, wallet.privateKey)
+    const signatureB64 = Buffer.from(request.signature).toString('base64')
+    const wrappedToken = Buffer.from(
+      JSON.stringify({ ...request, signature: { type: 'uint8array', value: signatureB64 } }),
+      'utf8'
+    ).toString('base64')
+
+    const canonical = decodeCanonical(encodeBuilderAuthorizationForTee(wrappedToken))
+
+    expect(canonical.signature).toBe(signatureB64)
+    expect(canonical.data).toEqual(request.data)
   })
 })

@@ -13,7 +13,7 @@ Key features:
 - Built on [Reclaim Protocol](https://reclaimprotocol.org)
 
 
-> **Using an application ID and secret from the Reclaim Devtool?** That legacy auth mode is deprecated and will be removed in a future release. Please move to [Reclaim Builder](https://build.reclaimprotocol.org) and an organization token — see [Migrating from Devtool to Builder](#migrating-from-devtool-to-builder).
+> **Reclaim Devtool has been deprecated.** Application IDs and secrets from the Devtool are no longer supported. Use [Reclaim Builder](https://build.reclaimprotocol.org) and an organization token — see [Migrating from Devtool to Builder](#migrating-from-devtool-to-builder).
 
 ## Installation
 
@@ -33,7 +33,7 @@ npm install @reclaimprotocol/zk-fetch
   | Linux (glibc) | x64, arm64 | glibc 2.17 |
   | Windows | x64 | Windows 10 |
 
-  In slim Docker images, install the system CA certificates (for example `apt-get install -y ca-certificates`), or TEE requests will fail TLS verification.
+  On other platforms, requests use the non-TEE path. In slim Docker images, install the system CA certificates (for example `apt-get install -y ca-certificates`), or TEE requests will fail TLS verification.
 
 
 ## Quick Start
@@ -82,7 +82,7 @@ const proof = await client.zkFetch('https://api.github.com/user', {
 
 Every call asks Builder for a short-lived, single-use authorization for the request's target host immediately before connecting to the attestor -- it is never requested ahead of time or reused across calls. The response includes an attestor token only when Builder has an attestor signing key configured; otherwise the token is omitted and the client connects to the attestor without one. Either way, the call counts against your quota. This is what actually meters zkFetch against your Builder plan; the fetch and the proof itself still happen entirely in your own process.
 
-If your org's `ZKFETCH` quota is exhausted, Builder rejects the authorization and the call rejects with a `BuilderQuotaExceededError` (a subclass of `BuilderAuthorizationError`) instead of a generic error, so you can catch it specifically:
+If your org's `ZKFETCH` quota is exhausted, Builder rejects the authorization and the call rejects with a `BuilderQuotaExceededError` (a subclass of `BuilderAuthorizationError`) instead of a generic error, so you can catch it specifically. Its `message` explains the refusal, and `billingUrl` links to your organization's billing page in Builder, where you upgrade the plan or add credits:
 
 ```javascript
 const { ReclaimClient, BuilderQuotaExceededError } = require('@reclaimprotocol/zk-fetch');
@@ -92,14 +92,14 @@ try {
 } catch (error) {
   if (error instanceof BuilderQuotaExceededError) {
     // error.status is 402 or 429
-    console.error('Out of zkFetch quota for this billing period');
+    console.error(`Out of zkFetch quota. Upgrade or add credits at ${error.billingUrl}`);
   } else {
     throw error;
   }
 }
 ```
 
-> Builder mode does not currently support `useTee: true`; it only covers the standard (non-TEE) `zkFetch` path.
+> Builder mode works with both TEE mode (the default) and the non-TEE path. Each attempt on either path is authorized and counted against your quota.
 
 ### Migrating from Devtool to Builder
 
@@ -115,82 +115,6 @@ const client = new ReclaimClient({ orgToken: process.env.RECLAIM_ORG_TOKEN, logs
 ```
 
 3. If you used `generateSessionSignature` to hand signatures to an untrusted client, move those `zkFetch` calls to your server instead. Builder org tokens must stay server-side.
-
-### Legacy: Devtool Application ID and Secret (deprecated)
-
-> **Deprecated.** This mode still works in 2.x, but it will be removed in a future release. New integrations should use [Builder mode](#builder-mode-organization-token).
-
-#### Direct secret
-
-```javascript
-const { ReclaimClient } = require('@reclaimprotocol/zk-fetch');
-
-// Server only - never expose the secret in frontend code
-const client = new ReclaimClient('APPLICATION_ID', 'APPLICATION_SECRET');
-
-const proof = await client.zkFetch('https://api.example.com/data', {
-  method: 'GET'
-});
-```
-
-#### Session signature
-
-A signature lets a less-trusted process make `zkFetch` calls without holding your application secret. It still requires a Node.js 22+ runtime.
-
-**Step 1: Generate signature on your backend**
-
-```javascript
-const { generateSessionSignature } = require('@reclaimprotocol/zk-fetch');
-
-// Backend API endpoint
-app.post('/api/get-signature', async (req, res) => {
-  const signature = await generateSessionSignature({
-    applicationId: process.env.APP_ID,
-    applicationSecret: process.env.APP_SECRET,
-    allowedUrls: [
-      'https://api.coingecko.com/*',                  // Wildcard - all paths under domain
-      'https://api.example.com/public/data',          // Exact URL match
-      '^https://api\\.example\\.com/user/\\d+$'        // Regex pattern
-    ],
-    expiresAt: Math.floor(Date.now() / 1000) + 3600  // Expires in 1 hour (optional)
-  });
-
-  res.json({ signature });
-});
-```
-
-**Step 2: Use the signature in the less-trusted process**
-
-```javascript
-const { ReclaimClient } = require('@reclaimprotocol/zk-fetch');
-
-// Fetch signature from your backend
-const response = await fetch('https://your-backend.example.com/api/get-signature', { method: 'POST' });
-const { signature } = await response.json();
-
-// Initialize with the signature instead of the secret
-const client = new ReclaimClient(
-  'APPLICATION_ID',
-  signature
-);
-
-// Make requests (only to URLs in allowlist)
-const proof = await client.zkFetch(
-  'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd',
-  { method: 'GET' }
-);
-```
-
-**Signature Features:**
-- Time-limited (default 1 hour, max 72 hours)
-- URL-restricted via allowlist (exact, wildcard, or regex patterns)
-- Cryptographically signed (ECDSA)
-- The application secret stays on your backend
-
-**URL Pattern Examples:**
-- `'https://api.example.com/data'` - Exact match only
-- `'https://api.example.com/*'` - All paths under domain
-- `'^https://api\\.example\\.com/user/\\d+$'` - Regex pattern for dynamic URLs
 
 ## Client Configuration
 
@@ -212,24 +136,29 @@ new ReclaimClient({ orgToken, builderBaseUrl?, logs?, retries? })
 const client = new ReclaimClient({ orgToken: process.env.RECLAIM_ORG_TOKEN, logs: true, retries: 3 });
 ```
 
-The deprecated Devtool form takes the same `logs` and `retries` as positional arguments: `new ReclaimClient(applicationId, applicationSecret, logs?, retries?)`.
-
 ### Using TEE Mode
 
-> TEE mode currently requires the deprecated Devtool credentials: Builder mode doesn't support `useTee: true` yet. See [Requirements](#requirements) for supported platforms.
+> See [Requirements](#requirements) for the platforms TEE mode supports.
 
-TEE (Trusted Execution Environment) mode can be enabled per-request by setting `useTee: true` in the options:
+Requests run in TEE (Trusted Execution Environment) mode by default. A request stays on the non-TEE path when you don't set `useTee` and it:
+
+- sets `zkEngine` (see [Choosing the ZK Engine](#choosing-the-zk-engine-non-tee)),
+- uses an `oprf-raw` redaction hash, or
+- runs on a platform without a TEE library (see [Requirements](#requirements)).
+
+Set `useTee` to choose explicitly; an explicit value always wins:
 
 ```javascript
+// Force the non-TEE path for this request
 const proof = await client.zkFetch('https://api.example.com/data', {
   method: 'GET',
-  useTee: true  // Enable TEE mode for this specific request
+  useTee: false
 });
 ```
 
 #### The TEE library download
 
-TEE mode runs through a native library (`libreclaim`) that isn't bundled in the npm package. `npm install` downloads the one for your platform (about 30–40 MB) from this repo's [GitHub Releases](https://github.com/reclaimprotocol/zk-fetch/releases) and checks it against a sha256 pinned in the package; a file that doesn't match is never loaded. If the download was skipped (for example `npm install --ignore-scripts`) or failed, the first `useTee: true` request downloads it instead. It's stored in the package's `lib/` folder, or in your user cache folder if `node_modules` is read-only.
+TEE mode runs through a native library (`libreclaim`) that isn't bundled in the npm package. `npm install` downloads the one for your platform (about 30–40 MB) from this repo's [GitHub Releases](https://github.com/reclaimprotocol/zk-fetch/releases) and checks it against a sha256 pinned in the package; a file that doesn't match is never loaded. If the download was skipped (for example `npm install --ignore-scripts`) or failed, the first TEE request downloads it instead. It's stored in the package's `lib/` folder, or in your user cache folder if `node_modules` is read-only.
 
 | Environment variable | Effect |
 | --- | --- |
@@ -250,7 +179,7 @@ const proof = await client.zkFetch('https://api.example.com/data', {
 });
 ```
 
-`zkEngine` is ignored when `useTee: true` — the TEE path picks its own engine.
+Setting `zkEngine` keeps a request on the non-TEE path. It's ignored if you also pass `useTee: true`, since the TEE path picks its own engine.
 
 > **snarkjs requires extra setup.** snarkjs proofs need the `chacha20` / `aes-128-ctr` / `aes-256-ctr` circuit files
 > (`circuit.wasm`, `circuit_final.zkey`, `circuit.r1cs`) which are not shipped in the npm tarball. After `npm install`,
@@ -387,9 +316,10 @@ You can also use responseMatches and responseRedactions to match and redact the 
         // Optional: replace the matched span with an OPRF commitment instead
         // of a plain redaction byte. When set, `extractedParameterValues.<name>`
         // returns the OPRF hash string (not the plaintext).
-        //   'oprf'     — only honored on the TEE path (`useTee: true`)
-        //   'oprf-raw' — only honored on the non-TEE path
-        hash: 'oprf' // 'oprf' | 'oprf-raw'
+        //   'oprf-mpc' — TEE path (the default); computed by the TEEs with MPC
+        //   'oprf-raw' — non-TEE path only; keeps the request off TEE
+        //   'oprf'     — deprecated; treated as 'oprf-mpc'
+        hash: 'oprf-mpc' // 'oprf-mpc' | 'oprf-raw'
       }
     ]
   }
@@ -447,43 +377,55 @@ The response looks like the follows
 
 #### Verify the proofs
 
-Install @reclaimprotocol/js-sdk
+Verify proofs on your server with [`@reclaimprotocol/client`](https://www.npmjs.com/package/@reclaimprotocol/client) (Node.js 22+):
 
-```bash 
-$ npm install @reclaimprotocol/js-sdk
+```bash
+npm install @reclaimprotocol/client
 ```
 
-Import the verifyProof function from the js-sdk
+The verifier rebuilds the hash of the request it expects (same URL, method, response matches and redactions the prover used), then checks the proof against that hash and against the attestors Reclaim publishes:
 
 ```javascript
-const { verifyProof } = require('@reclaimprotocol/js-sdk');
+import { hashProofClaimParams, verifyRequestProof } from '@reclaimprotocol/client';
+
+// The request you expect the proof to cover
+const hashes = hashProofClaimParams({
+  url: 'https://api.example.com/data',
+  method: 'GET',
+  responseMatches: [{ type: 'regex', value: '"price":"(?<price>[\\d\\.]+)"' }],
+  responseRedactions: [{ regex: '"price":"(?<price>[\\d\\.]+)"' }],
+});
+
+const outcome = await verifyRequestProof(proof, {
+  hashes,
+  // Trust the attestors listed in Reclaim Builder's published key set
+  attestorJwksUrl: 'https://build.reclaimprotocol.org/.well-known/jwks.json',
+});
+
+if (!outcome.valid) {
+  throw new Error(`Invalid proof: ${outcome.reason}`);
+}
 ```
 
-Use verifyProof(proof)
+Pass `hashProofClaimParams` the same `url`, `method`, `responseMatches` and `responseRedactions` you gave `zkFetch`, including any `hash` on a redaction (for example `{ regex, hash: 'oprf-mpc' }`); otherwise the hashes won't match and verification fails. Empty or unset fields such as `body: ''`, `jsonPath: ''` or `invert: undefined` don't change the hash, so you can leave them out.
 
-You must send the proofObject and not the verifiedResponse to the verifier for them to be able to verify.
+`verifyRequestProof` checks that the proof is signed by a trusted attestor, that the signed claim hasn't been modified, and that it was produced for the expected request: a valid proof for a different URL or different matches is rejected. It returns `{ valid, reason }` instead of throwing. Send the verifier the full proof object returned by `zkFetch`.
 
-```javascript
-const isProofVerified = await verifyProof(proof);
-```
-
-it verifies the authenticity and completeness of a given proof. It checks if the proof contains signatures, recalculates the proof identifier, and verifies it against the provided signatures. If the verification fails, it will log the error and return false.
+`@reclaimprotocol/client` is ESM-only. From CommonJS, load it with `const { hashProofClaimParams, verifyRequestProof } = await import('@reclaimprotocol/client');`.
 
 #### Transform proof for onchain
 
-Transforms proof data into a format suitable for on-chain transactions, you need to use it before sending the proof to the blockchain.
-
-Import the transformForOnchain function from the js-sdk
+`transformForOnchain` reshapes a proof into the format Reclaim's verifier contracts take. Verify the proof first; this only reshapes it.
 
 ```javascript
-const { transformForOnchain } = require('@reclaimprotocol/js-sdk');
-```
+const { transformForOnchain } = require('@reclaimprotocol/zk-fetch');
 
-Use transformForOnchain(proof) to transform the proof for onchain.
-
-```javascript
 const onchainProof = transformForOnchain(proof);
+// { claimInfo: { context, parameters, provider },
+//   signedClaim: { claim: { epoch, identifier, owner, timestampS }, signatures } }
 ```
+
+> `@reclaimprotocol/js-sdk` has been discontinued. Use the two replacements above instead of its `verifyProof` and `transformForOnchain`.
 
 
 ### Add Retries and Retry Interval
@@ -514,7 +456,7 @@ You can add retries and a retry interval to the fetch request. The per-call defa
   )
 ```
 
-> **TEE note:** on the TEE path (`useTee: true`), a fresh enclave allocation can time out on a cold start. To avoid a single transient timeout hard-failing the request, the TEE path automatically retries such transient failures a few times even when `retries` is `1`. Non-transient errors still fail fast per your `retries`.
+> **TEE note:** on the TEE path, a fresh enclave allocation can time out on a cold start. To avoid a single transient timeout hard-failing the request, the TEE path automatically retries such transient failures a few times even when `retries` is `1`. Non-transient errors still fail fast per your `retries`.
 
 ### Add GeoLocation
 
@@ -538,15 +480,6 @@ Note: The geoLocation should be a two-letter ISO country code, for example, 'US'
   )
 
 ```
-
-## More examples
-
-you can find more examples/starter packs here 
-
-- [React Example](https://github.com/reclaimprotocol/reclaim-zkfetch-client)
-- [Express Example](https://github.com/reclaimprotocol/zkfetch-express-example)
-- [NestJS Example](https://github.com/reclaimprotocol/zkfetch-nestjs-example)
-- [Next.js Example](https://github.com/reclaimprotocol/reclaim-zkfetch-client/tree/feat/nextjs)
 
 ## License 
 This library is governed by an [AGPL](./LICENSE.md) license.

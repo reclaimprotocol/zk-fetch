@@ -83,11 +83,14 @@ export class ReclaimSDK {
     const requestJson = JSON.stringify(request);
     const configJson = config ? JSON.stringify(config) : undefined;
 
-    const { error, claimJson, rawPointer } = bindings.executeProtocol(
-      requestJson,
-      configJson
-    );
+    return this.parseResult(bindings.executeProtocol(requestJson, configJson));
+  }
 
+  private parseResult({
+    error,
+    claimJson,
+    rawPointer,
+  }: ReturnType<typeof bindings.executeProtocol>): TeeProtocolResult {
     if (error !== ReclaimError.SUCCESS) {
       // Free the pointer even on error if it was allocated
       if (rawPointer) {
@@ -117,22 +120,18 @@ export class ReclaimSDK {
   }
 
   /**
-   * Execute the protocol asynchronously (wraps sync call in a Promise)
+   * Execute the protocol on a worker thread, keeping the event loop free.
    */
   public async executeProtocolAsync(
     request: TeeProviderRequest,
     config?: TeeReclaimConfig
   ): Promise<TeeProtocolResult> {
-    return new Promise((resolve, reject) => {
-      setImmediate(() => {
-        try {
-          const result = this.executeProtocol(request, config);
-          resolve(result);
-        } catch (err) {
-          reject(err);
-        }
-      });
-    });
+    this.ensureInitialized();
+    const result = await bindings.executeProtocolAsync(
+      JSON.stringify(request),
+      config ? JSON.stringify(config) : undefined
+    );
+    return this.parseResult(result);
   }
 
   private ensureInitialized(): void {
