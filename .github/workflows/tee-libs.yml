@@ -11,6 +11,12 @@
 name: tee-libs
 
 on:
+  # TEMPORARY: one-off run to publish the first release from this PR branch
+  # (workflow_dispatch only works once the file is on the default branch).
+  # Removed in the next commit.
+  push:
+    branches: [feat/tee-libs-download]
+    paths: [.github/workflows/tee-libs.yml]
   workflow_dispatch:
     inputs:
       reclaim_tee_ref:
@@ -26,6 +32,7 @@ permissions:
 
 env:
   RECLAIM_TEE_REPO: reclaimprotocol/reclaim-tee
+  TEE_REF: ${{ inputs.reclaim_tee_ref || 'e313ebff7afb1f851ac7faca699c461f0398d952' }}
 
 jobs:
   build:
@@ -53,7 +60,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ env.RECLAIM_TEE_REPO }}
-          ref: ${{ inputs.reclaim_tee_ref }}
+          ref: ${{ env.TEE_REF }}
           path: reclaim-tee
 
       - name: Read Go version
@@ -145,7 +152,7 @@ jobs:
 
   release:
     needs: build
-    if: ${{ inputs.publish }}
+    if: ${{ inputs.publish || github.event_name == 'push' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -159,7 +166,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          REF: ${{ inputs.reclaim_tee_ref }}
+          REF: ${{ env.TEE_REF }}
         run: |
           set -euo pipefail
           cd artifacts
