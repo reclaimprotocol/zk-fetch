@@ -223,11 +223,7 @@ export class ReclaimClient {
     }
 
     // TEE is the default; see resolveUseTee for when a call stays on the non-TEE path.
-    const useTee = resolveUseTee(options, secretOptions, isTeePlatformSupported());
-    if (this.logs && options?.useTee === undefined) {
-      logger.info(`useTee not set; using the ${useTee ? 'TEE' : 'non-TEE'} path`);
-    }
-    if (useTee) {
+    if (resolveUseTee(options, secretOptions, isTeePlatformSupported())) {
       // Lazy-initialize TEE SDK if not already initialized. The native library
       // is normally downloaded at install time; this downloads and verifies it
       // if that was skipped.
